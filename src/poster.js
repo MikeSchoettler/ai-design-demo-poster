@@ -14,18 +14,37 @@ const AMP_TARGET = AMP_MAX * 0.75; // 100% scale at 75% of MAX loudness
 
 function updateVoiceReveal(ctx) {
   const rawAmp = ctx.audio.amplitude * ctx.ui.audioSensitivity;
-  // Slow symmetric smoothing — this is the plavnost'.
-  // Rise + fall both use the same coefficient so text glides in AND out.
   posterAmpSmoothed = posterAmpSmoothed * 0.93 + rawAmp * 0.07;
 
   const isFlowMode = ctx.ui.currentMode === 'flow';
-  const scale = !isFlowMode
-    ? 1
-    : Math.min(1.18, posterAmpSmoothed / AMP_TARGET); // 0..1 linearly, then a bit past for over-shout size boost
+  let scale = 1;
+  if (isFlowMode) {
+    const raw = posterAmpSmoothed / AMP_TARGET;
+    if (raw <= 1) {
+      scale = raw; // linear reveal 0..1
+    } else {
+      // Aggressive over-shout: growth accelerates past 100 %
+      scale = 1 + (raw - 1) * 2.8;
+    }
+    scale = Math.min(3.6, scale); // hard cap so nothing explodes to infinity
+  }
+  const overshoot = Math.max(0, scale - 1); // 0 at target, up to ~2.6 when screaming
 
-  const voice = { scale, smoothedAmp: posterAmpSmoothed, isFlowMode };
-  ctx.voice = voice; // expose so flow.js particles can react to the same signal
+  const voice = { scale, overshoot, smoothedAmp: posterAmpSmoothed, isFlowMode };
+  ctx.voice = voice;
   return voice;
+}
+
+// Position jitter applied when text is in over-shout territory — the words
+// tremble as if under pressure. Deterministic-ish per frame via Math.random.
+function tremor(overshoot) {
+  const strength = Math.max(0, overshoot - 0.35);
+  if (strength <= 0) return { x: 0, y: 0 };
+  const amt = strength * 9;
+  return {
+    x: (Math.random() - 0.5) * amt,
+    y: (Math.random() - 0.5) * amt,
+  };
 }
 
 export function drawPoster(p, ctx) {
@@ -174,9 +193,13 @@ function drawManifesto(p, ctx, opts) {
   const { fg, dim, colA, contentW, titleTop, voice } = opts;
   const { ui, H } = ctx;
   const scale = voice.scale;
+  const overshoot = voice.overshoot;
 
-  // Title — SCALE ONLY, alpha always full
+  const titleText = ui.title || 'AI Дизайн\nДемо';
   const titleSize = SIZE_H1 * scale;
+  const titleLines = titleText.split('\n').length;
+  const titleH = titleLines * titleSize * 0.94;
+
   if (titleSize > 3) {
     p.textFont('JetBrains Mono');
     p.textStyle(p.BOLD);
@@ -184,24 +207,24 @@ function drawManifesto(p, ctx, opts) {
     p.textSize(titleSize);
     p.textLeading(titleSize * 0.94);
     p.textAlign(p.LEFT, p.TOP);
-    p.text(ui.title || 'AI Дизайн\nДемо', colA, titleTop);
+    const t = tremor(overshoot);
+    p.text(titleText, colA + t.x, titleTop + t.y);
   }
 
-  const divY = H * 0.5;
+  // Divider — pushed down by title as it grows past H/2
+  const divY = Math.max(H * 0.5, titleTop + titleH + 30);
   p.stroke(fg, 100);
   p.strokeWeight(1);
   p.line(colA, divY, colA + contentW, divY);
   p.noStroke();
 
-  // Label — always visible so user knows where the subtitle will appear
-  const subTop = divY + 30;
+  const subLabelY = divY + 30;
   p.textStyle(p.BOLD);
   p.textSize(SIZE_META);
   p.fill(dim);
   p.textAlign(p.LEFT, p.TOP);
-  p.text('О ФОРМАТЕ', colA, subTop);
+  p.text('О ФОРМАТЕ', colA, subLabelY);
 
-  // Subtitle in 2/3 width — SCALE ONLY
   const subSize = SIZE_BODY * scale;
   if (subSize > 3) {
     const subW = Math.floor(contentW * (2 / 3));
@@ -211,7 +234,8 @@ function drawManifesto(p, ctx, opts) {
     p.fill(fg);
     const manifestoDefault =
       'Разбираем реальные задачи дизайн-функции Фантеха и показываем, как AI помогает их решать.';
-    p.text(ui.subtitle || manifestoDefault, colA, subTop + 30, subW);
+    const t = tremor(overshoot);
+    p.text(ui.subtitle || manifestoDefault, colA + t.x, subLabelY + SIZE_META + 8 + t.y, subW);
   }
 }
 
@@ -220,8 +244,8 @@ function drawSpeaker(p, ctx, opts) {
   const { fg, dim, colA, contentW, M, titleTop, voice } = opts;
   const { ui, H } = ctx;
   const scale = voice.scale;
+  const overshoot = voice.overshoot;
 
-  // Small title — SCALE ONLY
   const titleSz = SIZE_BODY * scale;
   if (titleSz > 3) {
     p.textFont('JetBrains Mono');
@@ -231,11 +255,12 @@ function drawSpeaker(p, ctx, opts) {
     p.textLeading(titleSz * 1.05);
     p.textAlign(p.LEFT, p.TOP);
     const collapsedTitle = (ui.title || 'AI Дизайн Демо').replace(/\n/g, ' ');
-    p.text(collapsedTitle, colA, titleTop);
+    const t = tremor(overshoot);
+    p.text(collapsedTitle, colA + t.x, titleTop + t.y);
   }
 
-  // Divider always visible (system chrome)
-  const divY = titleTop + SIZE_BODY + 24;
+  // Divider follows the small title as it grows
+  const divY = titleTop + titleSz + 24;
   p.stroke(fg, 100);
   p.strokeWeight(1);
   p.line(colA, divY, colA + contentW, divY);
@@ -250,19 +275,17 @@ function drawSpeaker(p, ctx, opts) {
   const speakerLine = ui.speaker || 'Имя Фамилия, Команда';
   const topicLine = ui.topic || 'Тема выступления';
 
+  // Use SCALED hero size for height calc — blocks push each other apart as they grow
   const heroSize = SIZE_H2 * scale;
-  // Layout uses BASE hero size for positioning stability, so labels + block
-  // rects don't shift as the voice scale ramps.
-  const baseH2 = SIZE_H2;
-  const speakerH = estimateWrappedHeight(speakerLine, contentW, baseH2, baseH2 * 0.98);
-  const topicH = estimateWrappedHeight(topicLine, contentW, baseH2, baseH2 * 0.98);
+  const heroForLayout = Math.max(SIZE_H2, heroSize); // never shrink layout below base
+  const speakerH = estimateWrappedHeight(speakerLine, contentW, heroForLayout, heroForLayout * 0.98);
+  const topicH = estimateWrappedHeight(topicLine, contentW, heroForLayout, heroForLayout * 0.98);
 
   const speakerY = stripTop - gapAboveStrip - speakerH;
   const speakerLabelY = speakerY - SIZE_META - labelGap;
   const topicY = speakerLabelY - blockGap - topicH;
   const topicLabelY = topicY - SIZE_META - labelGap;
 
-  // Labels — always visible so structure reads even in silence
   p.textStyle(p.BOLD);
   p.textSize(SIZE_META);
   p.fill(dim);
@@ -270,15 +293,15 @@ function drawSpeaker(p, ctx, opts) {
   p.text('ТЕМА', colA, topicLabelY);
   p.text('СПИКЕР', colA, speakerLabelY);
 
-  // Topic — SCALE ONLY
   if (heroSize > 3) {
     p.textStyle(p.BOLD);
     p.textSize(heroSize);
     p.textLeading(heroSize * 0.98);
     p.fill(fg);
-    p.text(topicLine, colA, topicY, contentW);
-    // Speaker
-    p.text(speakerLine, colA, speakerY, contentW);
+    const t1 = tremor(overshoot);
+    p.text(topicLine, colA + t1.x, topicY + t1.y, contentW);
+    const t2 = tremor(overshoot);
+    p.text(speakerLine, colA + t2.x, speakerY + t2.y, contentW);
   }
 }
 
