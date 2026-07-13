@@ -4,6 +4,41 @@ const SIZE_H2 = 84;    // Big — Speaker hero pair (name+team / topic)
 const SIZE_BODY = 40;  // Body — Manifesto subtitle, Speaker title, strip values
 const SIZE_META = 16;  // Meta — labels, crumbs, footer
 
+// ===== VOICE-REACTIVE STATE (Mode 01 only) =====
+// Slow, asymmetric smoothing of amplitude — smooth reveal AND smooth fade.
+let posterAmpSmoothed = 0;
+// AMP calibration:
+//   - Full reveal at 75% of AMP_MAX (i.e. AMP_TARGET)
+//   - "Over-shouting" past AMP_TARGET grows font size up to +18%
+const AMP_MAX = 0.12;
+const AMP_TARGET = AMP_MAX * 0.75; // 0.09
+// Smoothstep for S-curve reveal (extra silky)
+function smoothstep(x) {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
+}
+
+function updateVoiceReveal(ctx) {
+  const rawAmp = ctx.audio.amplitude * ctx.ui.audioSensitivity;
+  // Asymmetric smoothing — moderate rise, gentler fall so text lingers
+  if (rawAmp > posterAmpSmoothed) {
+    posterAmpSmoothed = posterAmpSmoothed * 0.9 + rawAmp * 0.1;
+  } else {
+    posterAmpSmoothed = posterAmpSmoothed * 0.96 + rawAmp * 0.04;
+  }
+  const isFlowMode = ctx.ui.currentMode === 'flow';
+  if (!isFlowMode) {
+    return { alpha: 1, sizeMult: 1 };
+  }
+  const raw = posterAmpSmoothed / AMP_TARGET; // 1.0 at 75% of AMP_MAX
+  const revealLinear = Math.min(1, raw);
+  const revealAlpha = smoothstep(revealLinear);
+  // Overshoot beyond AMP_TARGET, capped at 1
+  const overshoot = Math.max(0, Math.min(1, (posterAmpSmoothed - AMP_TARGET) / (AMP_MAX - AMP_TARGET)));
+  const sizeMult = 1 + smoothstep(overshoot) * 0.18;
+  return { alpha: revealAlpha, sizeMult };
+}
+
 export function drawPoster(p, ctx) {
   const { W, H, ui } = ctx;
   const fg = ui.invert ? 15 : 240;
@@ -89,11 +124,12 @@ export function drawPoster(p, ctx) {
   // Title top — reflows with header
   const titleTop = ruleY + 30;
 
+  const voice = updateVoiceReveal(ctx);
   const template = ui.template || 'manifesto';
   if (template === 'speaker') {
-    drawSpeaker(p, ctx, { fg, dim, colA, contentW, M, titleTop });
+    drawSpeaker(p, ctx, { fg, dim, colA, contentW, M, titleTop, voice });
   } else {
-    drawManifesto(p, ctx, { fg, dim, colA, contentW, M, titleTop });
+    drawManifesto(p, ctx, { fg, dim, colA, contentW, M, titleTop, voice });
   }
 
   // ===== INSTRUMENT STRIP =====
@@ -146,19 +182,23 @@ export function drawPoster(p, ctx) {
 
 // ---- Manifesto: BIG title, small subtitle in 2/3 width ----
 function drawManifesto(p, ctx, opts) {
-  const { fg, dim, colA, contentW, titleTop } = opts;
+  const { fg, dim, colA, contentW, titleTop, voice } = opts;
   const { ui, H } = ctx;
+  const a = voice.alpha;   // reveal 0..1 in flow mode, 1 in other modes
+  const s = voice.sizeMult; // 1..1.18 for over-shout size boost
 
+  // Title
   p.textFont('JetBrains Mono');
   p.textStyle(p.BOLD);
-  p.fill(fg);
-  p.textSize(SIZE_H1);
-  p.textLeading(SIZE_H1 * 0.94);
+  p.fill(fg, a * 255);
+  const titleSize = SIZE_H1 * s;
+  p.textSize(titleSize);
+  p.textLeading(titleSize * 0.94);
   p.textAlign(p.LEFT, p.TOP);
   p.text(ui.title || 'AI Дизайн\nДемо', colA, titleTop);
 
   const divY = H * 0.5;
-  p.stroke(fg, 100);
+  p.stroke(fg, 100 * a);
   p.strokeWeight(1);
   p.line(colA, divY, colA + contentW, divY);
   p.noStroke();
@@ -166,16 +206,17 @@ function drawManifesto(p, ctx, opts) {
   const subTop = divY + 30;
   p.textStyle(p.BOLD);
   p.textSize(SIZE_META);
-  p.fill(dim);
+  p.fill(dim, a * 255);
   p.textAlign(p.LEFT, p.TOP);
   p.text('О ФОРМАТЕ', colA, subTop);
 
-  // Subtitle in 2/3 width
+  // Subtitle in 2/3 width (size boost with over-shout too)
   const subW = Math.floor(contentW * (2 / 3));
   p.textStyle(p.NORMAL);
-  p.textSize(SIZE_BODY);
-  p.textLeading(SIZE_BODY * 1.22);
-  p.fill(fg);
+  const subSize = SIZE_BODY * s;
+  p.textSize(subSize);
+  p.textLeading(subSize * 1.22);
+  p.fill(fg, a * 255);
   const manifestoDefault =
     'Разбираем реальные задачи дизайн-функции Фантеха и показываем, как AI помогает их решать.';
   p.text(ui.subtitle || manifestoDefault, colA, subTop + 30, subW);
@@ -183,27 +224,28 @@ function drawManifesto(p, ctx, opts) {
 
 // ---- Speaker: small title at top, HUGE speaker + topic block BOTTOM-anchored ----
 function drawSpeaker(p, ctx, opts) {
-  const { fg, dim, colA, contentW, M, titleTop } = opts;
+  const { fg, dim, colA, contentW, M, titleTop, voice } = opts;
   const { ui, H } = ctx;
+  const a = voice.alpha;
+  const s = voice.sizeMult;
 
-  // Small title (~3× smaller than manifesto)
+  // Small title
   p.textFont('JetBrains Mono');
   p.textStyle(p.BOLD);
-  p.fill(fg);
-  p.textSize(SIZE_BODY);
-  p.textLeading(SIZE_BODY * 1.05);
+  p.fill(fg, a * 255);
+  const titleSz = SIZE_BODY * s;
+  p.textSize(titleSz);
+  p.textLeading(titleSz * 1.05);
   p.textAlign(p.LEFT, p.TOP);
   const collapsedTitle = (ui.title || 'AI Дизайн Демо').replace(/\n/g, ' ');
   p.text(collapsedTitle, colA, titleTop);
 
-  const divY = titleTop + SIZE_BODY + 24;
-  p.stroke(fg, 100);
+  const divY = titleTop + titleSz + 24;
+  p.stroke(fg, 100 * a);
   p.strokeWeight(1);
   p.line(colA, divY, colA + contentW, divY);
   p.noStroke();
 
-  // Bottom-anchored speaker + topic block — grows upward from just above the strip.
-  // Layout order from bottom to top: Speaker line, СПИКЕР label, Topic line, ТЕМА label.
   const PAD = 26;
   const stripTop = H - M - PAD - 116;
   const gapAboveStrip = 30;
@@ -213,8 +255,9 @@ function drawSpeaker(p, ctx, opts) {
   const speakerLine = ui.speaker || 'Имя Фамилия, Команда';
   const topicLine = ui.topic || 'Тема выступления';
 
-  const speakerH = estimateWrappedHeight(speakerLine, contentW, SIZE_H2, SIZE_H2 * 0.98);
-  const topicH = estimateWrappedHeight(topicLine, contentW, SIZE_H2, SIZE_H2 * 0.98);
+  const heroSize = SIZE_H2 * s;
+  const speakerH = estimateWrappedHeight(speakerLine, contentW, heroSize, heroSize * 0.98);
+  const topicH = estimateWrappedHeight(topicLine, contentW, heroSize, heroSize * 0.98);
 
   const speakerY = stripTop - gapAboveStrip - speakerH;
   const speakerLabelY = speakerY - SIZE_META - labelGap;
@@ -224,26 +267,26 @@ function drawSpeaker(p, ctx, opts) {
   // Topic
   p.textStyle(p.BOLD);
   p.textSize(SIZE_META);
-  p.fill(dim);
+  p.fill(dim, a * 255);
   p.textAlign(p.LEFT, p.TOP);
   p.text('ТЕМА', colA, topicLabelY);
 
   p.textStyle(p.BOLD);
-  p.textSize(SIZE_H2);
-  p.textLeading(SIZE_H2 * 0.98);
-  p.fill(fg);
+  p.textSize(heroSize);
+  p.textLeading(heroSize * 0.98);
+  p.fill(fg, a * 255);
   p.text(topicLine, colA, topicY, contentW);
 
   // Speaker
   p.textStyle(p.BOLD);
   p.textSize(SIZE_META);
-  p.fill(dim);
+  p.fill(dim, a * 255);
   p.text('СПИКЕР', colA, speakerLabelY);
 
   p.textStyle(p.BOLD);
-  p.textSize(SIZE_H2);
-  p.textLeading(SIZE_H2 * 0.98);
-  p.fill(fg);
+  p.textSize(heroSize);
+  p.textLeading(heroSize * 0.98);
+  p.fill(fg, a * 255);
   p.text(speakerLine, colA, speakerY, contentW);
 }
 

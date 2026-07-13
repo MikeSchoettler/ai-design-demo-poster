@@ -29,6 +29,29 @@ const MODES = [
   { key: 'hand', label: '03 · Hand skeleton × particles' },
 ];
 
+const MODE_HINTS = {
+  flow: 'Крикни «Фантех» — вся типографика вылезет из тишины',
+  face: 'Открой рот — лазеры из глаз · Каждые 3 с новая деформация лица',
+  hand: 'Покажи ладони — частицы льются из центра · Пальцы толкают · Есть 6-й',
+};
+
+let _hintTimer = null;
+export function showModeHint(key) {
+  const el = document.getElementById('mode-hint');
+  if (!el) return;
+  const text = MODE_HINTS[key];
+  if (!text) {
+    el.classList.remove('visible');
+    return;
+  }
+  el.textContent = text;
+  el.classList.add('visible');
+  clearTimeout(_hintTimer);
+  _hintTimer = setTimeout(() => {
+    el.classList.remove('visible');
+  }, 7000);
+}
+
 const MODE_LABELS = Object.fromEntries(MODES.map((m) => [m.key, m.label]));
 
 export function getModeLabel(key) {
@@ -155,6 +178,7 @@ export function setupUI() {
     });
     const hud = document.getElementById('hud-mode');
     if (hud) hud.textContent = MODE_LABELS[key].toUpperCase();
+    showModeHint(key);
   }
   uiState._setMode = setMode;
 
@@ -273,6 +297,10 @@ export function setupUI() {
   document.getElementById('hud-mode').textContent = MODE_LABELS[uiState.currentMode].toUpperCase();
 
   setupMobileControls();
+
+  // Show initial mode hint after a small delay so user sees it after
+  // any permission dialogs settle.
+  setTimeout(() => showModeHint(uiState.currentMode), 700);
 }
 
 function setupMobileControls() {
@@ -310,6 +338,18 @@ function setupMobileControls() {
     b.addEventListener('click', () => {
       if (uiState._setMode) uiState._setMode(b.dataset.mode);
     });
+  });
+
+  // Also close the settings sheet when a mode is picked on mobile via the
+  // panel — user probably wants to see the change.
+  document.getElementById('mode-grid')?.addEventListener('click', () => {
+    const panel = document.getElementById('panel');
+    const toggle = document.getElementById('settings-toggle');
+    if (panel && panel.classList.contains('open')) {
+      panel.classList.remove('open');
+      toggle?.classList.remove('open');
+      if (toggle) toggle.textContent = '☰ Настройки';
+    }
   });
 
   document.getElementById('m-snap').addEventListener('click', () => {

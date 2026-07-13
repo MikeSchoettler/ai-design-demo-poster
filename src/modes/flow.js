@@ -60,38 +60,11 @@ export function draw(p, ctx) {
     }
   }
 
-  // ==== VOICE-REACTIVE HERO TYPOGRAPHY ====
-  // Content depends on active template so it matches the "important info".
-  const isSpeaker = (ctx.ui.template || 'manifesto') === 'speaker';
-  const heroText = isSpeaker
-    ? (ctx.ui.topic || 'Тема выступления')
-    : (ctx.ui.subtitle ||
-       'Разбираем реальные задачи дизайн-функции Фантеха и показываем, как AI помогает их решать.');
+  // Voice-reactive hero typography is now drawn by poster.js — it modulates
+  // the actual title / subtitle / speaker / topic so screaming reveals the
+  // whole layout, not a duplicate text.
 
-  const THRESHOLD = 0.04;
-  const MAX_SIZE = 76;
-  const rampAmp = Math.max(0, amp - THRESHOLD);
-  const size = Math.min(1, rampAmp * 6) * MAX_SIZE;
-  const alpha = Math.min(1, rampAmp * 7) * 245;
-
-  if (size > 6) {
-    p.push();
-    p.textFont('JetBrains Mono');
-    p.textStyle(p.BOLD);
-    p.textSize(size);
-    p.textLeading(size * 1.08);
-    p.textAlign(p.CENTER, p.CENTER);
-    p.noStroke();
-    p.fill(fg, alpha);
-    // Anchor in the middle band between title and instrument strip
-    const boxX = ctx.W * 0.08;
-    const boxW = ctx.W * 0.84;
-    const boxY = ctx.H * 0.28;
-    const boxH = ctx.H * 0.5;
-    p.text(heroText, boxX, boxY, boxW, boxH);
-    p.pop();
-  }
-
+  const THRESHOLD = 0.02;
   // Silence prompt — pulsing dot + text in the middle when amp is low
   if (amp < THRESHOLD) {
     p.textFont('JetBrains Mono');
