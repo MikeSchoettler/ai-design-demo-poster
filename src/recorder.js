@@ -111,7 +111,28 @@ function stamp() {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-function download(blob, name) {
+const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+async function shareOrDownload(blob, name) {
+  // On touch devices, prefer Web Share API — iOS/Android show a system share
+  // sheet with "Save Image" / "Save Video" which puts the file into the
+  // Photos / Gallery. On desktop we fall through to standard download.
+  if (IS_TOUCH && navigator.share && navigator.canShare) {
+    try {
+      const file = new File([blob], name, { type: blob.type });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: name });
+        return;
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        console.warn('[recorder] share failed, falling back to download:', e);
+      } else {
+        return; // user cancelled — nothing to do
+      }
+    }
+  }
+  // Fallback anchor download
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -122,4 +143,8 @@ function download(blob, name) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function download(blob, name) {
+  shareOrDownload(blob, name);
 }

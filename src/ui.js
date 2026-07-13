@@ -150,6 +150,9 @@ export function setupUI() {
     modeGrid.querySelectorAll('.mode-btn').forEach((x) => {
       x.classList.toggle('active', x.dataset.mode === key);
     });
+    document.querySelectorAll('#mobile-mode-btns button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.mode === key);
+    });
     const hud = document.getElementById('hud-mode');
     if (hud) hud.textContent = MODE_LABELS[key].toUpperCase();
   }
@@ -268,6 +271,65 @@ export function setupUI() {
   });
 
   document.getElementById('hud-mode').textContent = MODE_LABELS[uiState.currentMode].toUpperCase();
+
+  setupMobileControls();
+}
+
+function setupMobileControls() {
+  // Settings toggle (opens/closes bottom-sheet panel)
+  const toggle = document.createElement('button');
+  toggle.id = 'settings-toggle';
+  toggle.textContent = '☰ Настройки';
+  document.body.appendChild(toggle);
+
+  const panel = document.getElementById('panel');
+  toggle.addEventListener('click', () => {
+    const open = panel.classList.toggle('open');
+    toggle.classList.toggle('open', open);
+    toggle.textContent = open ? '✕ Закрыть' : '☰ Настройки';
+  });
+
+  // Bottom controls bar
+  const bar = document.createElement('div');
+  bar.id = 'mobile-controls';
+  bar.innerHTML = `
+    <div id="mobile-mode-btns">
+      <button data-mode="flow">01</button>
+      <button data-mode="face">02</button>
+      <button data-mode="hand">03</button>
+    </div>
+    <div id="mobile-action-btns">
+      <button id="m-snap">Фото</button>
+      <button id="m-rec">Видео</button>
+    </div>
+  `;
+  document.body.appendChild(bar);
+
+  bar.querySelectorAll('#mobile-mode-btns button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === uiState.currentMode);
+    b.addEventListener('click', () => {
+      if (uiState._setMode) uiState._setMode(b.dataset.mode);
+    });
+  });
+
+  document.getElementById('m-snap').addEventListener('click', () => {
+    snapPNG();
+  });
+
+  const mrec = document.getElementById('m-rec');
+  mrec.addEventListener('click', () => {
+    if (isRecording()) return;
+    mrec.classList.add('recording');
+    mrec.textContent = '● Rec 8s';
+    startRecording(8000, () => {
+      mrec.classList.remove('recording');
+      mrec.textContent = 'Видео';
+    });
+    setTimeout(() => {
+      mrec.classList.remove('recording');
+      mrec.textContent = 'Видео';
+    }, 8400);
+  });
 }
 
 function bindText(id, key) {

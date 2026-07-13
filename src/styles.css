@@ -271,3 +271,144 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 10px;
   color: var(--ink-dim);
 }
+
+/* ================= MOBILE ================= */
+#settings-toggle,
+#mobile-controls { display: none; }
+
+@media (max-width: 900px) {
+  html, body { overflow: hidden; }
+  #app {
+    grid-template-columns: 1fr;
+    height: 100dvh;
+  }
+
+  #stage {
+    padding: 12px 12px 90px 12px;
+  }
+  #stage::before { display: none; }
+
+  #canvas-wrap {
+    /* Take the smaller of screen width and available height (accounting for
+       bottom controls + top toggle button) — height * 0.8 respects 4:5 aspect. */
+    width: min(100%, calc((100dvh - 168px) * 0.8));
+    height: auto;
+    max-height: calc(100dvh - 168px);
+    aspect-ratio: 1080 / 1350;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08);
+  }
+
+  #hud { display: none; }
+
+  /* Bottom-sheet settings panel */
+  #panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 100dvh;
+    border-left: none;
+    background: var(--panel);
+    transform: translateY(100%);
+    transition: transform 0.25s ease-out;
+    z-index: 200;
+    padding: 62px 18px 32px;
+    box-sizing: border-box;
+    overscroll-behavior: contain;
+  }
+  #panel.open { transform: translateY(0); }
+
+  /* Settings toggle button (top-right) */
+  #settings-toggle {
+    display: block;
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    background: rgba(15,15,15,0.85);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--line-hi);
+    color: var(--ink);
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    z-index: 300;
+    cursor: pointer;
+  }
+  #settings-toggle.open {
+    background: var(--ink);
+    color: #000;
+    border-color: var(--ink);
+  }
+
+  /* Bottom action bar */
+  #mobile-controls {
+    display: flex;
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
+    background: rgba(15,15,15,0.9);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--line);
+    padding: 8px;
+    gap: 6px;
+    z-index: 100;
+    align-items: stretch;
+  }
+  #mobile-mode-btns {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+  }
+  #mobile-mode-btns button {
+    flex: 1;
+    padding: 12px 4px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 0;
+  }
+  #mobile-mode-btns button.active {
+    background: var(--ink);
+    color: #000;
+    border-color: var(--ink);
+  }
+  #mobile-action-btns {
+    display: flex;
+    gap: 4px;
+  }
+  #mobile-action-btns button {
+    padding: 12px 14px;
+    background: var(--ink);
+    color: #000;
+    border: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    font-size: 11px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 0;
+  }
+  #mobile-action-btns button.recording {
+    background: #ff3838;
+    color: #fff;
+    animation: pulse 1s infinite;
+  }
+  #mobile-action-btns button:disabled {
+    opacity: 0.5;
+  }
+}
