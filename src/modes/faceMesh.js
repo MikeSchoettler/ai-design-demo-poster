@@ -75,7 +75,7 @@ export function draw(p, ctx) {
   if (!face) {
     p.fill(fg, 220);
     p.noStroke();
-    p.textFont('JetBrains Mono');
+    p.textFont('Roboto Mono');
     p.textSize(14);
     p.textAlign(p.CENTER, p.CENTER);
     p.text('◌ NO FACE — LEAN INTO FRAME', ctx.W / 2, ctx.H * 0.6 + 260);

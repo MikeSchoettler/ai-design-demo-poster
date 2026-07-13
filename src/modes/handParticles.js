@@ -170,7 +170,7 @@ export function draw(p, ctx) {
   // ===== Skeletons + role indicators =====
   if (emitters.length === 0) {
     p.fill(fg, 200);
-    p.textFont('JetBrains Mono');
+    p.textFont('Roboto Mono');
     p.textSize(14);
     p.textAlign(p.CENTER, p.CENTER);
     p.text('◌ SHOW HANDS · BOTH PALMS EMIT PARTICLES', ctx.W / 2, ctx.H - 260);
@@ -224,7 +224,7 @@ export function draw(p, ctx) {
     }
     p.noStroke();
     p.fill(fg);
-    p.textFont('JetBrains Mono');
+    p.textFont('Roboto Mono');
     p.textStyle(p.BOLD);
     p.textSize(14);
     p.textAlign(p.CENTER, p.TOP);
@@ -232,7 +232,7 @@ export function draw(p, ctx) {
   }
 
   // Alive count HUD
-  p.textFont('JetBrains Mono');
+  p.textFont('Roboto Mono');
   p.textStyle(p.NORMAL);
   p.textSize(11);
   p.textAlign(p.LEFT, p.TOP);

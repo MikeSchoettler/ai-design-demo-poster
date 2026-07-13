@@ -29,7 +29,7 @@ export function drawPoster(p, ctx) {
 
   // ===== HEADER (крошки) =====
   const headerY = M + 30;
-  p.textFont('JetBrains Mono');
+  p.textFont('Roboto Mono');
   p.textStyle(p.BOLD);
   p.textAlign(p.LEFT, p.TOP);
   p.textSize(17);
@@ -54,7 +54,7 @@ export function drawPoster(p, ctx) {
   p.noStroke();
 
   // ===== TITLE =====
-  p.textFont('Space Grotesk');
+  p.textFont('Roboto Mono');
   p.textStyle(p.BOLD);
   p.fill(fg);
   const titleSize = 148;
@@ -71,7 +71,7 @@ export function drawPoster(p, ctx) {
   p.noStroke();
 
   const subTop = divY + 30;
-  p.textFont('JetBrains Mono');
+  p.textFont('Roboto Mono');
   p.textAlign(p.LEFT, p.TOP);
 
   if ((ui.template || 'manifesto') === 'speaker') {
@@ -127,7 +127,7 @@ export function drawPoster(p, ctx) {
   p.line(colA, stripDivY, contentX1, stripDivY);
   p.noStroke();
 
-  p.textFont('JetBrains Mono');
+  p.textFont('Roboto Mono');
   p.textStyle(p.BOLD);
   p.textAlign(p.LEFT, p.TOP);
   p.textSize(12);
@@ -150,7 +150,7 @@ export function drawPoster(p, ctx) {
 
   // ===== FOOTER — крошки внизу =====
   const footerY = H - M - PAD;
-  p.textFont('JetBrains Mono');
+  p.textFont('Roboto Mono');
   p.textStyle(p.BOLD);
   p.textAlign(p.LEFT, p.BOTTOM);
   p.textSize(15);
