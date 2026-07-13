@@ -43,12 +43,9 @@ export function draw(p, ctx) {
 
   p.background(bg);
 
-  // Camera underlay ONLY in Visible mode
-  if (ctx.ui.cameraMode === 'visible' && ctx.camera.frameReady) {
-    const filter = ctx.ui.invert
-      ? 'grayscale(1) contrast(2.4) brightness(1.2) blur(2px)'
-      : 'grayscale(1) contrast(2.2) brightness(0.5) blur(1.5px)';
-    drawCameraCover(p, ctx, { alpha: 0.5, filter });
+  // Camera underlay ONLY in Visible mode (pre-processed grayscale)
+  if (ctx.ui.cameraMode === 'visible') {
+    drawCameraCover(p, ctx, { alpha: 0.45 });
   }
 
   // Trail fade

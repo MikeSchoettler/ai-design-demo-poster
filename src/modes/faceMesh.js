@@ -65,13 +65,8 @@ export function draw(p, ctx) {
   }
 
   // ==== VISIBLE mode: dim full-canvas camera under everything (no oval clip) ====
-  if (ctx.ui.cameraMode === 'visible' && ctx.camera.video?.readyState >= 2) {
-    drawCameraCover(p, ctx, {
-      alpha: 0.28,
-      filter: ctx.ui.invert
-        ? 'grayscale(1) contrast(1.4) brightness(1.15)'
-        : 'grayscale(1) contrast(1.5) brightness(0.5)',
-    });
+  if (ctx.ui.cameraMode === 'visible') {
+    drawCameraCover(p, ctx, { alpha: 0.28 });
   }
 
   // ==== Vertical light columns (main graphic — skips face oval) ====

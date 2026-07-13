@@ -2,13 +2,22 @@ import { snapPNG, startRecording, isRecording, getRecordingFormat } from './reco
 
 export const uiState = {
   currentMode: 'flow',
-  cameraMode: 'visible', // off | sensor | visible
+  cameraMode: 'visible',
   invert: false,
-  title: 'AI DESIGN\nDEMO',
+
+  // Content
+  template: 'manifesto', // 'manifesto' | 'speaker'
+  title: 'AI Дизайн\nДемо',
+  subtitle:
+    'Разбираем реальные задачи дизайн-функции Фантеха и показываем, как AI помогает их решать.',
+  speaker: 'Имя Фамилия',
+  team: 'Команда',
+  topic: 'Тема выступления',
+  logo: 'Фантех',
+  exchange: 'Обмен опытом',
   edition: 'SESSION · 01',
-  topicsText:
-    '01 · Claude Code — setup + design tasks\n02 · Phygital creative animation\n03 · Photo processing — fisheye + anim\n04 · Tracker × Клешня Бро\n05 · Prototyping — classic vs AI\n06 · Resizes — automation tools',
-  showTopics: true,
+  date: '', // auto-filled via nowStamp() when empty (Month YYYY)
+
   audioSensitivity: 1.2,
 };
 
@@ -27,8 +36,8 @@ export function getModeLabel(key) {
 export function setupUI() {
   const panel = document.getElementById('panel');
   panel.innerHTML = `
-    <p class="panel-brand"><strong>AI Design Demo</strong> · poster generator</p>
-    <p class="panel-brand">v0.3 · 1080×1350</p>
+    <p class="panel-brand"><strong>AI Дизайн Демо</strong> · poster generator</p>
+    <p class="panel-brand">v0.4 · 1080×1350</p>
 
     <div class="panel-section">
       <h3 class="panel-title">Mode</h3>
@@ -54,17 +63,44 @@ export function setupUI() {
     </div>
 
     <div class="panel-section">
+      <h3 class="panel-title">Template</h3>
+      <div class="toggle-row" id="template-toggle">
+        <button class="toggle-btn active" data-tpl="manifesto">Manifesto</button>
+        <button class="toggle-btn" data-tpl="speaker">Speaker</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
       <h3 class="panel-title">Copy</h3>
+
       <label>Title</label>
       <textarea id="ui-title" rows="2"></textarea>
-      <label>Edition</label>
-      <input type="text" id="ui-edition" />
-      <label>Agenda list (1 per line)</label>
-      <textarea id="ui-topics" rows="6"></textarea>
-      <div class="toggle-row">
-        <button class="toggle-btn active" id="topics-btn">Agenda visible</button>
+
+      <div id="tpl-manifesto-fields">
+        <label>Subtitle (о формате)</label>
+        <textarea id="ui-subtitle" rows="4"></textarea>
       </div>
-      <p class="hint">Layout auto-cycles 3-col / 2-col / 1-col every 10 s</p>
+
+      <div id="tpl-speaker-fields">
+        <label>Спикер · имя</label>
+        <input type="text" id="ui-speaker" />
+        <label>Команда</label>
+        <input type="text" id="ui-team" />
+        <label>Тема</label>
+        <textarea id="ui-topic" rows="2"></textarea>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3 class="panel-title">Крошки в углах</h3>
+      <label>Лого (top-left)</label>
+      <input type="text" id="ui-logo" />
+      <label>"Обмен опытом" тег</label>
+      <input type="text" id="ui-exchange" />
+      <label>Edition (N°)</label>
+      <input type="text" id="ui-edition" />
+      <label>Дата (Manifesto: Июль 2026 · Speaker: 13.07.2026)</label>
+      <input type="text" id="ui-date" placeholder="auto (Месяц YYYY)" />
     </div>
 
     <div class="panel-section">
@@ -87,10 +123,7 @@ export function setupUI() {
       <p class="hint">
         Space — snap PNG<br />
         R — record 8s<br />
-        1–3 — switch modes<br />
-        Audio: mic track embedded when mic OK<br />
-        Convert (if needed):<br />
-        <code style="color:#888">ffmpeg -i in.webm -c:v libx264 out.mp4</code>
+        1–3 — switch modes
       </p>
     </div>
   `;
@@ -137,16 +170,37 @@ export function setupUI() {
     });
   });
 
-  bindText('ui-title', 'title');
-  bindText('ui-edition', 'edition');
-  bindText('ui-topics', 'topicsText');
-
-  const topicsBtn = document.getElementById('topics-btn');
-  topicsBtn.addEventListener('click', () => {
-    uiState.showTopics = !uiState.showTopics;
-    topicsBtn.classList.toggle('active', uiState.showTopics);
-    topicsBtn.textContent = uiState.showTopics ? 'Agenda visible' : 'Agenda hidden';
+  // Template switcher — reveals/hides fields
+  const tplToggle = document.getElementById('template-toggle');
+  const setTemplate = (tpl) => {
+    uiState.template = tpl;
+    tplToggle.querySelectorAll('.toggle-btn').forEach((x) =>
+      x.classList.toggle('active', x.dataset.tpl === tpl)
+    );
+    document.getElementById('tpl-manifesto-fields').style.display =
+      tpl === 'manifesto' ? '' : 'none';
+    document.getElementById('tpl-speaker-fields').style.display =
+      tpl === 'speaker' ? '' : 'none';
+    // Auto-refresh date placeholder based on template
+    const dateInput = document.getElementById('ui-date');
+    if (dateInput && !dateInput.value.trim()) {
+      dateInput.placeholder = tpl === 'speaker' ? 'дд.мм.гггг' : 'auto (Месяц YYYY)';
+    }
+  };
+  tplToggle.querySelectorAll('.toggle-btn').forEach((b) => {
+    b.addEventListener('click', () => setTemplate(b.dataset.tpl));
   });
+  setTemplate(uiState.template);
+
+  bindText('ui-title', 'title');
+  bindText('ui-subtitle', 'subtitle');
+  bindText('ui-speaker', 'speaker');
+  bindText('ui-team', 'team');
+  bindText('ui-topic', 'topic');
+  bindText('ui-logo', 'logo');
+  bindText('ui-exchange', 'exchange');
+  bindText('ui-edition', 'edition');
+  bindText('ui-date', 'date');
 
   const sens = document.getElementById('ui-sens');
   const sensVal = document.getElementById('sens-val');
@@ -179,6 +233,7 @@ export function setupUI() {
 
 function bindText(id, key) {
   const el = document.getElementById(id);
+  if (!el) return;
   el.value = uiState[key];
   el.addEventListener('input', (e) => (uiState[key] = e.target.value));
 }

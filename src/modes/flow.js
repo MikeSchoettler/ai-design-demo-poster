@@ -27,16 +27,13 @@ export function draw(p, ctx) {
   const cameraSensing = ctx.ui.cameraMode !== 'off' && ctx.camera.frameReady;
   const cameraVisible = ctx.ui.cameraMode === 'visible' && ctx.camera.frameReady;
 
-  // Camera underlay — ONLY in Visible mode
+  // Camera underlay — ONLY in Visible mode (grayscale pre-processed in camera.js)
   if (cameraVisible) {
-    const filter = ctx.ui.invert
-      ? 'grayscale(1) contrast(1.6) brightness(1.15)'
-      : 'grayscale(1) contrast(1.5) brightness(0.45)';
-    drawCameraCover(p, ctx, { alpha: 0.65, filter });
+    drawCameraCover(p, ctx, { alpha: 0.55 });
   }
 
   // Trail fade
-  p.fill(bg, 26);
+  p.fill(bg, 22);
   p.rect(0, 0, ctx.W, ctx.H);
 
   s.t += 0.005;

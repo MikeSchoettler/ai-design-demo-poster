@@ -11,7 +11,16 @@ export const audioState = {
 
 export async function setupAudio() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    // Disable Chrome's default DSP so music / speech survives into the recording.
+    // AGC + noiseSuppression + echoCancellation all mangle sustained audio.
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+      video: false,
+    });
     audioState.stream = stream;
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     const ctx = new AudioCtx();

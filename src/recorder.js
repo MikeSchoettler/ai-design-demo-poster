@@ -75,7 +75,7 @@ export function startRecording(durationMs = 8000, onDone) {
   const options = {
     mimeType: mime,
     videoBitsPerSecond: 10_000_000,
-    audioBitsPerSecond: 128_000,
+    audioBitsPerSecond: 256_000,
   };
 
   try {
