@@ -8,6 +8,10 @@ let currentMime = '';
 let currentExt = 'webm';
 
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+// Telegram in-app browser doesn't grant Web Share API — detect and skip
+const IS_TELEGRAM = /Telegram/i.test(navigator.userAgent);
+// After first share() failure remember it — don't retry, go straight to modal
+let shareKnownBroken = IS_TELEGRAM;
 
 const MIME_CANDIDATES = [
   // MP4 first — iOS Safari 14.3+ and Chromium 126+ can record it natively.
@@ -120,33 +124,35 @@ export function isRecording() {
   return mediaRecorder?.state === 'recording';
 }
 
-// Unified dispatch: on desktop → download; on touch → try share now if
-// activation is still valid, else show a "Save" button so the user taps
-// with fresh activation.
+// Dispatch — desktop → anchor download; touch → try Web Share, else preview
+// modal. The preview modal always works (Telegram WebView etc.) because it
+// lets user long-press the media to save through the system menu.
 async function handleFile(blob, name, needsFreshClick) {
   if (!IS_TOUCH) {
     downloadAnchor(blob, name);
     return;
   }
+  // Video path — activation is expired after 8s recording, skip auto-share.
   if (needsFreshClick) {
-    showSaveButton(blob, name);
+    showPreviewModal(blob, name);
     return;
   }
-  // Try immediate share while activation is fresh
-  if (navigator.share && navigator.canShare) {
+  // PNG / fresh path — try share if we haven't already discovered it's broken
+  if (!shareKnownBroken && navigator.share && navigator.canShare) {
     try {
       const file = new File([blob], name, { type: blob.type });
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: name });
         return;
       }
+      shareKnownBroken = true;
     } catch (e) {
       if (e.name === 'AbortError') return;
-      console.warn('[recorder] share failed, showing save button:', e);
+      shareKnownBroken = true;
+      console.warn('[recorder] share broken, switching to modal:', e);
     }
   }
-  // Share unavailable / failed → save button as fallback
-  showSaveButton(blob, name);
+  showPreviewModal(blob, name);
 }
 
 function downloadAnchor(blob, name) {
@@ -162,63 +168,84 @@ function downloadAnchor(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function showSaveButton(blob, name) {
-  const existing = document.getElementById('save-btn-modal');
+// Preview modal — universal fallback that works in every WebView / in-app
+// browser (Telegram, Instagram, etc.) because it just displays the media and
+// lets the user long-press to invoke the native "Save to Photos" menu.
+function showPreviewModal(blob, name) {
+  const existing = document.getElementById('preview-modal');
   if (existing) existing.remove();
 
-  const btn = document.createElement('button');
-  btn.id = 'save-btn-modal';
-  btn.style.cssText = [
-    'position:fixed',
-    'bottom:80px',
-    'left:50%',
-    'transform:translateX(-50%)',
-    'padding:16px 26px',
-    'background:#f2f2f2',
-    'color:#000',
-    'border:none',
-    "font-family:'JetBrains Mono', monospace",
-    'font-weight:700',
-    'letter-spacing:0.1em',
-    'font-size:13px',
-    'z-index:500',
-    'cursor:pointer',
-    'box-shadow:0 8px 30px rgba(0,0,0,0.5)',
-    'text-transform:uppercase',
-    'animation:pulse 1.2s infinite',
-  ].join(';');
-  const kind = name.endsWith('.png') ? 'фото' : 'видео';
-  btn.textContent = `💾 Сохранить ${kind}`;
-  document.body.appendChild(btn);
+  const isVideo = /\.(mp4|webm|mov)$/i.test(name);
+  const url = URL.createObjectURL(blob);
 
-  const doShare = async () => {
-    try {
-      const file = new File([blob], name, { type: blob.type });
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: name });
-        btn.remove();
-        return;
-      }
-      // No share — open blob in new tab so user can long-press → Save to Photos
-      window.open(URL.createObjectURL(blob), '_blank');
-      btn.remove();
-    } catch (e) {
-      if (e.name === 'AbortError') {
-        btn.remove();
-        return;
-      }
-      console.warn('[recorder] save button share failed:', e);
-      window.open(URL.createObjectURL(blob), '_blank');
-      btn.remove();
-    }
+  const modal = document.createElement('div');
+  modal.id = 'preview-modal';
+  modal.style.cssText = [
+    'position:fixed',
+    'inset:0',
+    'background:rgba(0,0,0,0.92)',
+    '-webkit-backdrop-filter:blur(10px)',
+    'backdrop-filter:blur(10px)',
+    'z-index:1000',
+    'display:flex',
+    'flex-direction:column',
+    'align-items:center',
+    'justify-content:center',
+    'padding:20px 16px',
+    'box-sizing:border-box',
+    'overflow:auto',
+  ].join(';');
+
+  const previewHtml = isVideo
+    ? `<video src="${url}" controls playsinline preload="auto" style="max-width:100%;max-height:52vh;background:#000;border:1px solid #222"></video>`
+    : `<img src="${url}" alt="${name}" style="max-width:100%;max-height:52vh;object-fit:contain;border:1px solid #222">`;
+
+  const hintText = isVideo
+    ? 'Долгое нажатие на видео → «Сохранить видео» / «Добавить в Фото»'
+    : 'Долгое нажатие на фото → «Добавить в Фото» / «Сохранить в изображения»';
+
+  modal.innerHTML = `
+    ${previewHtml}
+    <div style="margin-top:18px;color:#f2f2f2;font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center;max-width:440px;letter-spacing:0.06em;line-height:1.6">
+      <div style="color:#7a7a7a;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:6px">✓ ${isVideo ? 'ВИДЕО ГОТОВО' : 'ФОТО ГОТОВО'}</div>
+      <code style="color:#f2f2f2;font-size:10px">${name}</code>
+      <div style="margin-top:14px;color:#b0b0b0">${hintText}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;flex-wrap:wrap;justify-content:center">
+      <button id="preview-share" style="padding:14px 22px;background:#f2f2f2;color:#000;border:none;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer">💾 Поделиться</button>
+      <button id="preview-close" style="padding:14px 22px;background:transparent;color:#f2f2f2;border:1px solid #444;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer">Закрыть</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => {
+    URL.revokeObjectURL(url);
+    modal.remove();
   };
 
-  btn.addEventListener('click', doShare);
+  document.getElementById('preview-close').addEventListener('click', close);
 
-  // Auto-cleanup after a minute if user ignores it
-  setTimeout(() => {
-    if (btn.parentNode) btn.remove();
-  }, 60_000);
+  document.getElementById('preview-share').addEventListener('click', async () => {
+    // Fresh user activation on this tap — retry share even if we thought it was broken
+    if (navigator.share && navigator.canShare) {
+      try {
+        const file = new File([blob], name, { type: blob.type });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: name });
+          close();
+          return;
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        console.warn('[recorder] modal share failed:', e);
+      }
+    }
+    // Share unavailable — best we can do is remind user to long-press the preview
+    const hint = document.createElement('div');
+    hint.textContent = 'В этом браузере Web Share недоступен. Удерживай палец на превью — появится системное меню сохранения.';
+    hint.style.cssText = 'color:#ff6a6a;font-family:JetBrains Mono,monospace;font-size:11px;margin-top:14px;text-align:center;max-width:440px;line-height:1.6';
+    modal.appendChild(hint);
+  });
 }
 
 function stamp() {
