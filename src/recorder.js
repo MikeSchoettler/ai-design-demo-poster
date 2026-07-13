@@ -113,61 +113,13 @@ function stamp() {
 
 function download(blob, name) {
   const url = URL.createObjectURL(blob);
-  // Auto-download attempt via anchor
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
   a.rel = 'noopener';
-  a.target = '_blank';
   a.style.display = 'none';
   document.body.appendChild(a);
   a.click();
   a.remove();
-  // Persistent toast with manual fallback link — needed for Yandex Browser which
-  // sometimes silently drops blob downloads without any error.
-  showDownloadToast(url, name);
-  // Keep URL alive so the toast link works
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
-
-function showDownloadToast(url, name) {
-  let toast = document.getElementById('download-toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'download-toast';
-    toast.style.cssText = [
-      'position:fixed',
-      'bottom:20px',
-      'left:50%',
-      'transform:translateX(-50%)',
-      'background:#f2f2f2',
-      'color:#000',
-      'padding:10px 16px',
-      "font-family:'JetBrains Mono', monospace",
-      'font-size:12px',
-      'letter-spacing:0.06em',
-      'z-index:9999',
-      'display:flex',
-      'gap:14px',
-      'align-items:center',
-      'max-width:640px',
-      'box-shadow:0 8px 24px rgba(0,0,0,0.4)',
-    ].join(';');
-    document.body.appendChild(toast);
-  }
-  toast.innerHTML = `
-    <span>✓&nbsp;<b>${name}</b></span>
-    <a href="${url}" download="${name}" target="_blank" rel="noopener"
-       style="background:#000;color:#f2f2f2;padding:6px 12px;text-decoration:none;font-weight:700;letter-spacing:0.1em">
-      СКАЧАТЬ
-    </a>
-    <a href="${url}" target="_blank" rel="noopener"
-       style="color:#555;text-decoration:none;font-size:11px">
-      ↗ открыть в табе
-    </a>
-  `;
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => {
-    if (toast.parentNode) toast.parentNode.removeChild(toast);
-  }, 45_000);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }

@@ -3,6 +3,8 @@ import { drawCameraCover, cameraState } from '../camera.js';
 
 const NUM_COLUMNS = 26;
 const NUM_PARTICLES = 22000;
+const CYCLE_DURATION_MS = 3000;
+const NUM_DISTORT_PHASES = 5; // strength 1..5, then phase 0 = original rest
 
 export function init(p, ctx) {
   ctx.face = {
@@ -14,13 +16,94 @@ export function init(p, ctx) {
     columnIntensityPhase: Math.random() * 100,
     particles: Array.from({ length: NUM_PARTICLES }, () => ({
       col: Math.floor(Math.random() * NUM_COLUMNS),
-      // triangular distribution ~ gaussian centered at 0 → spine density in center
       xJit: (Math.random() + Math.random() + Math.random() - 1.5) * 0.75,
       y: Math.random() * ctx.H,
       vy: 0.5 + Math.random() * 1.8,
       size: 1.2 + Math.random() * 1.6,
     })),
+    // --- Distortion cycle state ---
+    distortPhase: 0,             // 0 = original, 1..5 = escalating random
+    distortPhaseStart: -1,
+    distortParams: makeDistortParams(0),
   };
+}
+
+function makeDistortParams(strength) {
+  if (strength <= 0) {
+    return {
+      scaleX: 1, scaleY: 1,
+      upperMultX: 1, upperMultY: 1,
+      lowerMultX: 1, lowerMultY: 1,
+      leftMult: 1, rightMult: 1,
+      sinKY: 0, sinKX: 0,
+      sinAmpX: 0, sinAmpY: 0,
+      phaseX: 0, phaseY: 0,
+      noiseAmp: 0,
+      seed: 0,
+      strength: 0,
+    };
+  }
+  const K = strength / NUM_DISTORT_PHASES;
+  const r = () => Math.random();
+  return {
+    scaleX: 1 + (r() - 0.5) * 0.32 * K,
+    scaleY: 1 + (r() - 0.5) * 0.36 * K,
+    upperMultX: 1 + (r() - 0.5) * 0.5 * K,
+    upperMultY: 1 + (r() - 0.5) * 0.5 * K,
+    lowerMultX: 1 + (r() - 0.5) * 0.6 * K,
+    lowerMultY: 1 + (r() - 0.5) * 0.65 * K,
+    leftMult: 1 + (r() - 0.5) * 0.45 * K,
+    rightMult: 1 + (r() - 0.5) * 0.45 * K,
+    sinKY: 4 + r() * 22,
+    sinKX: 4 + r() * 22,
+    sinAmpX: r() * 0.055 * K,
+    sinAmpY: r() * 0.055 * K,
+    phaseX: r() * Math.PI * 2,
+    phaseY: r() * Math.PI * 2,
+    noiseAmp: 0.012 * K,
+    seed: Math.floor(r() * 10000),
+    strength,
+  };
+}
+
+function pseudoRand(i, seed) {
+  const x = Math.sin((i + seed) * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+// Warp landmark position relative to face center.
+// Returns { x, y } in the same normalized space as the input.
+function warpLandmark(lm, i, dp, midX, midY) {
+  let x = lm.x - midX;
+  let y = lm.y - midY;
+  if (dp.strength === 0) return { x, y };
+
+  // Global non-uniform scale
+  x *= dp.scaleX;
+  y *= dp.scaleY;
+
+  // Upper / lower half asymmetric scale
+  if (y < 0) {
+    x *= dp.upperMultX;
+    y *= dp.upperMultY;
+  } else {
+    x *= dp.lowerMultX;
+    y *= dp.lowerMultY;
+  }
+
+  // Left / right asymmetric scale
+  if (x < 0) x *= dp.leftMult;
+  else x *= dp.rightMult;
+
+  // Sinusoidal warping (curves the geometry)
+  x += Math.sin(y * dp.sinKY + dp.phaseX) * dp.sinAmpX;
+  y += Math.sin(x * dp.sinKX + dp.phaseY) * dp.sinAmpY;
+
+  // Per-landmark deterministic noise
+  x += (pseudoRand(i, dp.seed) - 0.5) * dp.noiseAmp;
+  y += (pseudoRand(i, dp.seed + 1000) - 0.5) * dp.noiseAmp;
+
+  return { x, y };
 }
 
 export function draw(p, ctx) {
@@ -33,11 +116,24 @@ export function draw(p, ctx) {
   const amp = ctx.audio.amplitude * ctx.ui.audioSensitivity;
   const face = ctx.camera.faceLandmarks?.[0];
 
+  // --- Cycle advance (wall-clock based) ---
+  const nowMs = p.millis();
+  if (ctx.face.distortPhaseStart < 0) {
+    ctx.face.distortPhaseStart = nowMs;
+  }
+  if (nowMs - ctx.face.distortPhaseStart >= CYCLE_DURATION_MS) {
+    // Advance: 0 → 1 → 2 → 3 → 4 → 5 → 0 → 1 → ...
+    ctx.face.distortPhase = (ctx.face.distortPhase + 1) % (NUM_DISTORT_PHASES + 1);
+    ctx.face.distortParams = makeDistortParams(ctx.face.distortPhase);
+    ctx.face.distortPhaseStart = nowMs;
+  }
+  const dp = ctx.face.distortParams;
+
   // ==== Compute face bbox / oval BEFORE drawing so we can mask ====
   let faceOval = null;
-  let project = null;
   let scale = 0;
   let midX = 0, midY = 0, minY = 0, maxY = 0.3;
+  let cx = 0, cyPos = 0;
 
   if (face) {
     let minX = 1, maxX = 0;
@@ -49,27 +145,23 @@ export function draw(p, ctx) {
       if (lm.y > maxY) maxY = lm.y;
     }
     const fw = maxX - minX || 0.3;
-    const target = ctx.W * 0.5; // slightly smaller
+    const target = ctx.W * 0.5;
     scale = target / fw;
-    const cx = ctx.W / 2;
-    const cyPos = ctx.H * 0.58; // moved UP (was 0.66)
+    cx = ctx.W / 2;
+    cyPos = ctx.H * 0.58;
     midX = (minX + maxX) / 2;
     midY = (minY + maxY) / 2;
-    project = (lm) => ({
-      x: cx - (lm.x - midX) * scale,
-      y: cyPos + (lm.y - midY) * scale,
-    });
-    const faceRx = (target / 2) * 1.1;
+    const faceRx = (target / 2) * 1.15; // slightly larger to accommodate distortion
     const faceRy = faceRx * 1.28;
     faceOval = { cx, cy: cyPos, rx: faceRx, ry: faceRy };
   }
 
-  // ==== VISIBLE mode: dim full-canvas camera under everything (no oval clip) ====
+  // ==== VISIBLE camera underlay ====
   if (ctx.ui.cameraMode === 'visible') {
     drawCameraCover(p, ctx, { alpha: 0.28 });
   }
 
-  // ==== Vertical light columns (main graphic — skips face oval) ====
+  // ==== Light columns (skips face oval) ====
   drawLightColumns(p, ctx, faceOval, amp, fg);
 
   if (!face) {
@@ -82,7 +174,17 @@ export function draw(p, ctx) {
     return;
   }
 
-  // Mouth openness (13/14)
+  // ==== Precompute warped + projected screen positions ====
+  const projected = new Array(face.length);
+  for (let i = 0; i < face.length; i++) {
+    const w = warpLandmark(face[i], i, dp, midX, midY);
+    projected[i] = {
+      x: cx - w.x * scale,
+      y: cyPos + w.y * scale,
+    };
+  }
+
+  // Mouth openness (13/14) — uses raw normalized coords, not warped
   const upperLip = face[13];
   const lowerLip = face[14];
   const mouthDist = Math.abs(lowerLip.y - upperLip.y);
@@ -91,12 +193,12 @@ export function draw(p, ctx) {
   ctx.face.mouthPulse = ctx.face.mouthPulse * 0.75 + targetPulse * 0.25;
   const pulse = ctx.face.mouthPulse;
 
-  // Head velocity for laser direction
-  const irisL = face[468] || face[33];
-  const irisR = face[473] || face[263];
+  // Head velocity — raw normalized coords too
+  const irisL_raw = face[468] || face[33];
+  const irisR_raw = face[473] || face[263];
   const bothEyesN = {
-    x: (irisL.x + irisR.x) / 2,
-    y: (irisL.y + irisR.y) / 2,
+    x: (irisL_raw.x + irisR_raw.x) / 2,
+    y: (irisL_raw.y + irisR_raw.y) / 2,
   };
   if (ctx.face.headPrev) {
     const dvx = bothEyesN.x - ctx.face.headPrev.x;
@@ -112,8 +214,8 @@ export function draw(p, ctx) {
   p.noFill();
   const tess = FaceLandmarker.FACE_LANDMARKS_TESSELATION;
   for (const c of tess) {
-    const a = project(face[c.start]);
-    const b = project(face[c.end]);
+    const a = projected[c.start];
+    const b = projected[c.end];
     p.line(a.x, a.y, b.x, b.y);
   }
 
@@ -132,68 +234,84 @@ export function draw(p, ctx) {
   for (const group of emph) {
     if (!group) continue;
     for (const c of group) {
-      const a = project(face[c.start]);
-      const b = project(face[c.end]);
+      const a = projected[c.start];
+      const b = projected[c.end];
       p.line(a.x, a.y, b.x, b.y);
     }
   }
 
   p.noStroke();
   p.fill(fg);
-  for (const lm of face) {
-    const q = project(lm);
+  for (let i = 0; i < projected.length; i++) {
+    const q = projected[i];
     p.circle(q.x, q.y, 2.2);
   }
 
-  // ==== Eye lasers — with 10° divergence ====
+  // ==== Eye lasers ====
   if (pulse > 0.02) {
-    const L = project(irisL);
-    const R = project(irisR);
-    const eyeAxis = { x: R.x - L.x, y: R.y - L.y };
-    const eyeMag = Math.hypot(eyeAxis.x, eyeAxis.y) || 1;
-    const eyeN = { x: eyeAxis.x / eyeMag, y: eyeAxis.y / eyeMag };
-    const perp = { x: -eyeN.y, y: eyeN.x };
+    const L = projected[468] || projected[33];
+    const R = projected[473] || projected[263];
+    if (L && R) {
+      const eyeAxis = { x: R.x - L.x, y: R.y - L.y };
+      const eyeMag = Math.hypot(eyeAxis.x, eyeAxis.y) || 1;
+      const eyeN = { x: eyeAxis.x / eyeMag, y: eyeAxis.y / eyeMag };
+      const perp = { x: -eyeN.y, y: eyeN.x };
 
-    // Head velocity in screen coords
-    const velScreenX = -ctx.face.headVel.x * scale * 60;
-    const velScreenY = ctx.face.headVel.y * scale * 60;
-    const velMag = Math.hypot(velScreenX, velScreenY);
-    if (velMag > 4) {
-      const dot = perp.x * velScreenX + perp.y * velScreenY;
-      const chosen = dot >= 0 ? perp : { x: -perp.x, y: -perp.y };
-      ctx.face.laserDir.x = ctx.face.laserDir.x * 0.6 + chosen.x * 0.4;
-      ctx.face.laserDir.y = ctx.face.laserDir.y * 0.6 + chosen.y * 0.4;
-      const m = Math.hypot(ctx.face.laserDir.x, ctx.face.laserDir.y) || 1;
-      ctx.face.laserDir.x /= m;
-      ctx.face.laserDir.y /= m;
-    }
+      const velScreenX = -ctx.face.headVel.x * scale * 60;
+      const velScreenY = ctx.face.headVel.y * scale * 60;
+      const velMag = Math.hypot(velScreenX, velScreenY);
+      if (velMag > 4) {
+        const dot = perp.x * velScreenX + perp.y * velScreenY;
+        const chosen = dot >= 0 ? perp : { x: -perp.x, y: -perp.y };
+        ctx.face.laserDir.x = ctx.face.laserDir.x * 0.6 + chosen.x * 0.4;
+        ctx.face.laserDir.y = ctx.face.laserDir.y * 0.6 + chosen.y * 0.4;
+        const m = Math.hypot(ctx.face.laserDir.x, ctx.face.laserDir.y) || 1;
+        ctx.face.laserDir.x /= m;
+        ctx.face.laserDir.y /= m;
+      }
 
-    // 10° divergence: rotate L laser by -5°, R laser by +5° from base
-    const SPREAD = (5 * Math.PI) / 180;
-    const dirL = rotate(ctx.face.laserDir, -SPREAD);
-    const dirR = rotate(ctx.face.laserDir, +SPREAD);
+      const SPREAD = (5 * Math.PI) / 180;
+      const dirL = rotate(ctx.face.laserDir, -SPREAD);
+      const dirR = rotate(ctx.face.laserDir, +SPREAD);
 
-    if (pulse > 0.55) {
+      if (pulse > 0.55) {
+        p.noStroke();
+        p.fill(fg, (pulse - 0.55) * 90);
+        p.rect(0, 0, ctx.W, ctx.H);
+      }
+
+      drawLaser(p, ctx, L, dirL, pulse, fg);
+      drawLaser(p, ctx, R, dirR, pulse, fg);
+
+      p.fill(fg);
       p.noStroke();
-      p.fill(fg, (pulse - 0.55) * 90);
-      p.rect(0, 0, ctx.W, ctx.H);
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2 + t * 2;
+        const r = 26 + Math.sin(t * 4 + i) * 18 + pulse * 40;
+        p.circle(L.x + Math.cos(a) * r, L.y + Math.sin(a) * r, 3 + pulse * 4);
+        p.circle(R.x + Math.cos(a) * r, R.y + Math.sin(a) * r, 3 + pulse * 4);
+      }
+      p.fill(fg);
+      p.circle(L.x, L.y, 18 + pulse * 26);
+      p.circle(R.x, R.y, 18 + pulse * 26);
     }
-
-    drawLaser(p, ctx, L, dirL, pulse, fg);
-    drawLaser(p, ctx, R, dirR, pulse, fg);
-
-    p.fill(fg);
-    p.noStroke();
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * Math.PI * 2 + t * 2;
-      const r = 26 + Math.sin(t * 4 + i) * 18 + pulse * 40;
-      p.circle(L.x + Math.cos(a) * r, L.y + Math.sin(a) * r, 3 + pulse * 4);
-      p.circle(R.x + Math.cos(a) * r, R.y + Math.sin(a) * r, 3 + pulse * 4);
-    }
-    p.fill(fg);
-    p.circle(L.x, L.y, 18 + pulse * 26);
-    p.circle(R.x, R.y, 18 + pulse * 26);
   }
+
+  // ==== Cycle HUD indicator (bottom-left, small dim) ====
+  drawDistortHUD(p, ctx, fg, dp, nowMs);
+}
+
+function drawDistortHUD(p, ctx, fg, dp, nowMs) {
+  p.noStroke();
+  p.textFont('JetBrains Mono');
+  p.textStyle(p.BOLD);
+  p.textSize(11);
+  p.textAlign(p.LEFT, p.BOTTOM);
+  p.fill(fg, 130);
+  const phaseLabel = dp.strength === 0 ? 'ORIGINAL' : `MORPH · ${dp.strength}/${NUM_DISTORT_PHASES}`;
+  const elapsed = Math.min(CYCLE_DURATION_MS, nowMs - ctx.face.distortPhaseStart);
+  const secondsLeft = ((CYCLE_DURATION_MS - elapsed) / 1000).toFixed(1);
+  p.text(`FACE-MORPH · ${phaseLabel} · ${secondsLeft}s`, 78, ctx.H - 220);
 }
 
 function rotate(v, ang) {
@@ -209,7 +327,6 @@ function drawLightColumns(p, ctx, faceOval, amp, fg) {
   const colW = ctx.W / numCols;
   const t = s.t;
 
-  // Per-column intensity — fast-drifting Perlin for active shifting
   const intensities = new Array(numCols);
   for (let i = 0; i < numCols; i++) {
     const n = p.noise(i * 0.42 + s.columnIntensityPhase, t * 0.85);
@@ -240,19 +357,16 @@ function drawLightColumns(p, ctx, faceOval, amp, fg) {
       if ((dx * dx) / rxSq + (dy * dy) / rySq < 1.0) continue;
     }
 
-    // Spine falloff: dots close to column center are brightest
     const spineFalloff = 1 - Math.min(1, Math.abs(q.xJit) * 1.2);
     const alpha = intensity * spineFalloff;
     if (alpha < 0.05) continue;
 
-    // Boosted alpha rendering + size scales with brightness for glow feel
     const finalAlpha = Math.min(255, alpha * 340);
     const finalSize = q.size * (0.55 + intensity * 1.3);
     p.fill(fg, finalAlpha);
     p.circle(x, q.y, finalSize);
   }
 
-  // Central spines — start earlier (0.45 not 0.72), way brighter
   for (let i = 0; i < numCols; i++) {
     const intensity = intensities[i];
     if (intensity < 0.45) continue;
@@ -276,7 +390,6 @@ function drawLightColumns(p, ctx, faceOval, amp, fg) {
       p.line(cx, 0, cx, H);
     }
 
-    // Inner hot core
     if (intensity > 0.75) {
       p.stroke(255);
       p.strokeWeight(1);

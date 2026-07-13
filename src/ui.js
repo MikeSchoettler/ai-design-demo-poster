@@ -10,8 +10,7 @@ export const uiState = {
   title: 'AI Дизайн\nДемо',
   subtitle:
     'Разбираем реальные задачи дизайн-функции Фантеха и показываем, как AI помогает их решать.',
-  speaker: 'Имя Фамилия',
-  team: 'Команда',
+  speaker: 'Имя Фамилия, Команда',
   topic: 'Тема выступления',
   logo: 'Фантех',
   exchange: 'Обмен опытом',
@@ -82,10 +81,8 @@ export function setupUI() {
       </div>
 
       <div id="tpl-speaker-fields">
-        <label>Спикер · имя</label>
+        <label>Спикер · Имя Фамилия, Команда</label>
         <input type="text" id="ui-speaker" />
-        <label>Команда</label>
-        <input type="text" id="ui-team" />
         <label>Тема</label>
         <textarea id="ui-topic" rows="2"></textarea>
       </div>
@@ -195,7 +192,6 @@ export function setupUI() {
   bindText('ui-title', 'title');
   bindText('ui-subtitle', 'subtitle');
   bindText('ui-speaker', 'speaker');
-  bindText('ui-team', 'team');
   bindText('ui-topic', 'topic');
   bindText('ui-logo', 'logo');
   bindText('ui-exchange', 'exchange');

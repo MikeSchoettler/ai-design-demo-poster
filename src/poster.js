@@ -151,10 +151,10 @@ function drawManifesto(p, ctx, opts) {
   p.text(ui.subtitle || manifestoDefault, colA, subTop + 30, subW);
 }
 
-// ---- Speaker: small title, HUGE speaker + topic ----
+// ---- Speaker: small title at top, HUGE speaker + topic block BOTTOM-anchored ----
 function drawSpeaker(p, ctx, opts) {
   const { fg, dim, colA, contentW, M } = opts;
-  const { ui } = ctx;
+  const { ui, H } = ctx;
 
   // Small title (~3× smaller than manifesto)
   p.textFont('JetBrains Mono');
@@ -172,39 +172,49 @@ function drawSpeaker(p, ctx, opts) {
   p.line(colA, divY, colA + contentW, divY);
   p.noStroke();
 
-  const y0 = divY + 40;
+  // Bottom-anchored speaker + topic block — grows upward from just above the strip.
+  // Layout order from bottom to top: Speaker line, СПИКЕР label, Topic line, ТЕМА label.
+  const PAD = 26;
+  const stripTop = H - M - PAD - 116;
+  const gapAboveStrip = 30;
+  const labelGap = 8;
+  const blockGap = 28;
 
-  // СПИКЕР label
+  const speakerLine = ui.speaker || 'Имя Фамилия, Команда';
+  const topicLine = ui.topic || 'Тема выступления';
+
+  const speakerH = estimateWrappedHeight(speakerLine, contentW, SIZE_H2, SIZE_H2 * 0.98);
+  const topicH = estimateWrappedHeight(topicLine, contentW, SIZE_H2, SIZE_H2 * 0.98);
+
+  const speakerY = stripTop - gapAboveStrip - speakerH;
+  const speakerLabelY = speakerY - SIZE_META - labelGap;
+  const topicY = speakerLabelY - blockGap - topicH;
+  const topicLabelY = topicY - SIZE_META - labelGap;
+
+  // Topic
   p.textStyle(p.BOLD);
   p.textSize(SIZE_META);
   p.fill(dim);
-  p.text('СПИКЕР', colA, y0);
+  p.textAlign(p.LEFT, p.TOP);
+  p.text('ТЕМА', colA, topicLabelY);
 
-  // Speaker H2 line — combined "Имя Фамилия, Команда"
   p.textStyle(p.BOLD);
   p.textSize(SIZE_H2);
   p.textLeading(SIZE_H2 * 0.98);
   p.fill(fg);
-  const speakerLine = [ui.speaker || 'Имя Фамилия', ui.team || 'Команда']
-    .filter(Boolean)
-    .join(', ');
-  p.text(speakerLine, colA, y0 + 26, contentW);
-  const speakerBlockH = estimateWrappedHeight(speakerLine, contentW, SIZE_H2, SIZE_H2 * 0.98);
+  p.text(topicLine, colA, topicY, contentW);
 
-  const y1 = y0 + 26 + speakerBlockH + 34;
-
-  // ТЕМА label
+  // Speaker
   p.textStyle(p.BOLD);
   p.textSize(SIZE_META);
   p.fill(dim);
-  p.text('ТЕМА', colA, y1);
+  p.text('СПИКЕР', colA, speakerLabelY);
 
-  // Topic H2
   p.textStyle(p.BOLD);
   p.textSize(SIZE_H2);
   p.textLeading(SIZE_H2 * 0.98);
   p.fill(fg);
-  p.text(ui.topic || 'Тема выступления', colA, y1 + 26, contentW);
+  p.text(speakerLine, colA, speakerY, contentW);
 }
 
 function estimateWrappedHeight(str, w, size, leading) {
