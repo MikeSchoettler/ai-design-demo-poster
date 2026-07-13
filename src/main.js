@@ -15,12 +15,64 @@ const MODES = {
   hand: handMode,
 };
 
+// Onboarding tooltip per mode — shown for ~5 s after each switch, then fades.
+const MODE_HINTS = {
+  flow: 'КРИКНИ «ФАНТЕХ» — ТИПОГРАФИКА ВЫЛЕЗЕТ ИЗ ТИШИНЫ',
+  face: 'ОТКРОЙ РОТ — ЛАЗЕРЫ ИЗ ГЛАЗ · КАЖДЫЕ 3 С НОВАЯ ДЕФОРМАЦИЯ ЛИЦА',
+  hand: 'ПОКАЖИ ЛАДОНИ — ЧАСТИЦЫ ЛЬЮТСЯ ИЗ ЦЕНТРА · ПАЛЬЦЫ ТОЛКАЮТ · ЕСТЬ 6-Й',
+};
+
+function drawModeHint(p, ctx, key, activatedAt) {
+  const text = MODE_HINTS[key];
+  if (!text) return;
+  const elapsed = p.millis() - activatedAt;
+  const SHOW_MS = 4500;
+  const FADE_MS = 1500;
+  if (elapsed > SHOW_MS + FADE_MS) return;
+  let a = 1;
+  if (elapsed > SHOW_MS) a = 1 - (elapsed - SHOW_MS) / FADE_MS;
+  a = Math.max(0, Math.min(1, a));
+
+  const fg = ctx.ui.invert ? 15 : 240;
+  const bg = ctx.ui.invert ? 240 : 15;
+
+  p.push();
+  p.textFont('JetBrains Mono');
+  p.textStyle(p.BOLD);
+  p.textSize(15);
+  p.textAlign(p.CENTER, p.CENTER);
+  const tw = p.textWidth(text);
+  const pillW = Math.min(ctx.W - 120, tw + 44);
+  const pillH = 44;
+  const pillX = (ctx.W - pillW) / 2;
+  const pillY = ctx.H - 240;
+
+  // Filled pill
+  p.noStroke();
+  p.fill(bg, a * 235);
+  p.rect(pillX, pillY, pillW, pillH);
+  // Outer border
+  p.noFill();
+  p.stroke(fg, a * 220);
+  p.strokeWeight(1);
+  p.rect(pillX, pillY, pillW, pillH);
+  p.noStroke();
+  p.fill(fg, a * 240);
+  p.text(text, ctx.W / 2, pillY + pillH / 2 + 1);
+  // Small "◐" active indicator on left
+  p.textSize(12);
+  p.fill(fg, a * 180);
+  p.text('◐', pillX + 16, pillY + pillH / 2 + 1);
+  p.pop();
+}
+
 const W = 1080;
 const H = 1350;
 
 const sketch = (p) => {
   let currentKey = null;
   let current = null;
+  let modeActivatedAt = 0;
   const ctx = { W, H, camera: cameraState, audio: audioState, ui: uiState };
 
   p.setup = () => {
@@ -37,11 +89,13 @@ const sketch = (p) => {
     }
     currentKey = uiState.currentMode;
     current = MODES[currentKey];
+    modeActivatedAt = p.millis();
   };
 
   function switchTo(key) {
     currentKey = key;
     current = MODES[key];
+    modeActivatedAt = p.millis();
   }
 
   let fpsSmoothed = 30;
@@ -56,6 +110,7 @@ const sketch = (p) => {
 
     current.draw(p, ctx);
     drawPoster(p, ctx);
+    drawModeHint(p, ctx, currentKey, modeActivatedAt);
 
     if (p.frameCount % 15 === 0) {
       const fpsEl = document.getElementById('hud-fps');
