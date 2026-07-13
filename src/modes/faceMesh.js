@@ -40,31 +40,56 @@ function makeDistortParams(strength) {
       phaseX: 0, phaseY: 0,
       noiseAmp: 0,
       seed: 0,
+      // Eye-specific — shifts each eye independently
+      leftEyeShiftX: 0, leftEyeShiftY: 0, leftEyeScale: 1,
+      rightEyeShiftX: 0, rightEyeShiftY: 0, rightEyeScale: 1,
       strength: 0,
     };
   }
   const K = strength / NUM_DISTORT_PHASES;
   const r = () => Math.random();
+  const signed = () => (r() - 0.5) * 2; // -1..1
   return {
-    scaleX: 1 + (r() - 0.5) * 0.32 * K,
-    scaleY: 1 + (r() - 0.5) * 0.36 * K,
-    upperMultX: 1 + (r() - 0.5) * 0.5 * K,
-    upperMultY: 1 + (r() - 0.5) * 0.5 * K,
-    lowerMultX: 1 + (r() - 0.5) * 0.6 * K,
-    lowerMultY: 1 + (r() - 0.5) * 0.65 * K,
-    leftMult: 1 + (r() - 0.5) * 0.45 * K,
-    rightMult: 1 + (r() - 0.5) * 0.45 * K,
-    sinKY: 4 + r() * 22,
-    sinKX: 4 + r() * 22,
-    sinAmpX: r() * 0.055 * K,
-    sinAmpY: r() * 0.055 * K,
+    // Base non-uniform — cranked up
+    scaleX: 1 + signed() * 0.5 * K,
+    scaleY: 1 + signed() * 0.55 * K,
+    upperMultX: 1 + signed() * 0.9 * K,
+    upperMultY: 1 + signed() * 0.9 * K,
+    lowerMultX: 1 + signed() * 1.1 * K,
+    lowerMultY: 1 + signed() * 1.1 * K,
+    leftMult: 1 + signed() * 0.85 * K,
+    rightMult: 1 + signed() * 0.85 * K,
+    sinKY: 4 + r() * 30,
+    sinKX: 4 + r() * 30,
+    sinAmpX: r() * 0.1 * K,
+    sinAmpY: r() * 0.1 * K,
     phaseX: r() * Math.PI * 2,
     phaseY: r() * Math.PI * 2,
-    noiseAmp: 0.012 * K,
+    noiseAmp: 0.018 * K,
     seed: Math.floor(r() * 10000),
+    // Independent eye displacement (in normalized face-space)
+    leftEyeShiftX: signed() * 0.08 * K,
+    leftEyeShiftY: signed() * 0.07 * K,
+    leftEyeScale: 1 + signed() * 0.7 * K,
+    rightEyeShiftX: signed() * 0.08 * K,
+    rightEyeShiftY: signed() * 0.07 * K,
+    rightEyeScale: 1 + signed() * 0.7 * K,
     strength,
   };
 }
+
+// Eye landmark indices (MediaPipe face mesh)
+const LEFT_EYE_IDX = new Set([
+  33, 7, 163, 144, 145, 153, 154, 155, 133,
+  246, 161, 160, 159, 158, 157, 173,
+  468, 469, 470, 471, 472,
+]);
+const RIGHT_EYE_IDX = new Set([
+  263, 249, 390, 373, 374, 380, 381, 382, 362,
+  466, 388, 387, 386, 385, 384, 398,
+  473, 474, 475, 476, 477,
+]);
+// Eye centers (iris centroids in raw normalized coords) computed each frame
 
 function pseudoRand(i, seed) {
   const x = Math.sin((i + seed) * 12.9898) * 43758.5453;
@@ -73,7 +98,8 @@ function pseudoRand(i, seed) {
 
 // Warp landmark position relative to face center.
 // Returns { x, y } in the same normalized space as the input.
-function warpLandmark(lm, i, dp, midX, midY) {
+// Eye landmarks get extra independent shift + scale for asymmetric distortion.
+function warpLandmark(lm, i, dp, midX, midY, eyeCentersRaw) {
   let x = lm.x - midX;
   let y = lm.y - midY;
   if (dp.strength === 0) return { x, y };
@@ -82,7 +108,7 @@ function warpLandmark(lm, i, dp, midX, midY) {
   x *= dp.scaleX;
   y *= dp.scaleY;
 
-  // Upper / lower half asymmetric scale
+  // Upper / lower half asymmetric
   if (y < 0) {
     x *= dp.upperMultX;
     y *= dp.upperMultY;
@@ -91,17 +117,39 @@ function warpLandmark(lm, i, dp, midX, midY) {
     y *= dp.lowerMultY;
   }
 
-  // Left / right asymmetric scale
+  // Left / right asymmetric
   if (x < 0) x *= dp.leftMult;
   else x *= dp.rightMult;
 
-  // Sinusoidal warping (curves the geometry)
+  // Sinusoidal warping
   x += Math.sin(y * dp.sinKY + dp.phaseX) * dp.sinAmpX;
   y += Math.sin(x * dp.sinKX + dp.phaseY) * dp.sinAmpY;
 
-  // Per-landmark deterministic noise
+  // Per-landmark noise
   x += (pseudoRand(i, dp.seed) - 0.5) * dp.noiseAmp;
   y += (pseudoRand(i, dp.seed + 1000) - 0.5) * dp.noiseAmp;
+
+  // Eye-specific — shift & scale relative to eye center for that eye's landmarks
+  if (LEFT_EYE_IDX.has(i) && eyeCentersRaw.left) {
+    const ecx = eyeCentersRaw.left.x - midX;
+    const ecy = eyeCentersRaw.left.y - midY;
+    // Vector from eye center to landmark
+    let dx = x - ecx;
+    let dy = y - ecy;
+    dx *= dp.leftEyeScale;
+    dy *= dp.leftEyeScale;
+    x = ecx + dx + dp.leftEyeShiftX;
+    y = ecy + dy + dp.leftEyeShiftY;
+  } else if (RIGHT_EYE_IDX.has(i) && eyeCentersRaw.right) {
+    const ecx = eyeCentersRaw.right.x - midX;
+    const ecy = eyeCentersRaw.right.y - midY;
+    let dx = x - ecx;
+    let dy = y - ecy;
+    dx *= dp.rightEyeScale;
+    dy *= dp.rightEyeScale;
+    x = ecx + dx + dp.rightEyeShiftX;
+    y = ecy + dy + dp.rightEyeShiftY;
+  }
 
   return { x, y };
 }
@@ -174,10 +222,18 @@ export function draw(p, ctx) {
     return;
   }
 
+  // Compute raw eye centers (iris positions in normalized coords) for eye-specific warping
+  const irisL_raw0 = face[468] || face[33];
+  const irisR_raw0 = face[473] || face[263];
+  const eyeCentersRaw = {
+    left: irisL_raw0 ? { x: irisL_raw0.x, y: irisL_raw0.y } : null,
+    right: irisR_raw0 ? { x: irisR_raw0.x, y: irisR_raw0.y } : null,
+  };
+
   // ==== Precompute warped + projected screen positions ====
   const projected = new Array(face.length);
   for (let i = 0; i < face.length; i++) {
-    const w = warpLandmark(face[i], i, dp, midX, midY);
+    const w = warpLandmark(face[i], i, dp, midX, midY, eyeCentersRaw);
     projected[i] = {
       x: cx - w.x * scale,
       y: cyPos + w.y * scale,

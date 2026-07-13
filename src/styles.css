@@ -172,6 +172,27 @@ label {
   margin: 10px 0 4px;
 }
 
+input[type="file"] {
+  width: 100%;
+  color: var(--ink-dim);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 4px 0;
+}
+input[type="file"]::-webkit-file-upload-button {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-right: 10px;
+}
+input[type="file"]::-webkit-file-upload-button:hover { border-color: var(--line-hi); }
+
 input[type="range"] {
   -webkit-appearance: none;
   width: 100%;

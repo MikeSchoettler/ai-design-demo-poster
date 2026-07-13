@@ -21,6 +21,30 @@ function palmCenterPt(pts) {
   return { x: sx / PALM_LANDMARKS.length, y: sy / PALM_LANDMARKS.length };
 }
 
+// Fake 6th finger: extrapolate PAST pinky in the ring→pinky direction,
+// with joints running parallel to the pinky's own direction.
+function computeSixthFinger(pts) {
+  const ringMCP = pts[13];
+  const pinkyMCP = pts[17];
+  const pinkyTip = pts[20];
+  // MCP position — 90% beyond pinky in the ring→pinky direction
+  const mcp = {
+    x: pinkyMCP.x + (pinkyMCP.x - ringMCP.x) * 0.9,
+    y: pinkyMCP.y + (pinkyMCP.y - ringMCP.y) * 0.9,
+  };
+  // Direction parallel to pinky
+  const dx = pinkyTip.x - pinkyMCP.x;
+  const dy = pinkyTip.y - pinkyMCP.y;
+  // 6th finger slightly shorter and thinner
+  const scale = 0.82;
+  return {
+    mcp,
+    pip: { x: mcp.x + dx * 0.4 * scale, y: mcp.y + dy * 0.4 * scale },
+    dip: { x: mcp.x + dx * 0.72 * scale, y: mcp.y + dy * 0.72 * scale },
+    tip: { x: mcp.x + dx * 1.02 * scale, y: mcp.y + dy * 1.02 * scale },
+  };
+}
+
 export function init(p, ctx) {
   const N = 9000;
   ctx.hand = {
@@ -58,13 +82,14 @@ export function draw(p, ctx) {
   const amp = ctx.audio.amplitude * ctx.ui.audioSensitivity;
   const hands = ctx.camera.handLandmarks;
 
-  // ALL detected hands = emitters
+  // ALL detected hands = emitters (each gets a fake 6th finger)
   const emitters = [];
   if (hands && hands.length > 0) {
     for (const h of hands) {
       const pts = h.map((lm) => ({ x: (1 - lm.x) * ctx.W, y: lm.y * ctx.H }));
       const palm = palmCenterPt(pts);
-      emitters.push({ h, pts, palm });
+      const sixth = computeSixthFinger(pts);
+      emitters.push({ h, pts, palm, sixth });
     }
   }
 
@@ -102,21 +127,16 @@ export function draw(p, ctx) {
     }
   }
 
-  // Fingertip repellers on all hands
+  // Fingertip repellers on all hands (real 5 + fake 6th)
   const repels = [];
   const REPEL_R = 190;
-  if (hands) {
-    for (const h of hands) {
-      for (const idx of FINGERTIPS) {
-        const tip = h[idx];
-        repels.push({
-          x: (1 - tip.x) * ctx.W,
-          y: tip.y * ctx.H,
-          r: REPEL_R,
-          strength: 6.5,
-        });
-      }
+  for (const em of emitters) {
+    for (const idx of FINGERTIPS) {
+      const tip = em.pts[idx];
+      repels.push({ x: tip.x, y: tip.y, r: REPEL_R, strength: 6.5 });
     }
+    // 6th finger tip also repels
+    repels.push({ x: em.sixth.tip.x, y: em.sixth.tip.y, r: REPEL_R, strength: 6.5 });
   }
 
   // Update + draw alive particles
@@ -180,6 +200,9 @@ export function draw(p, ctx) {
   // Draw skeleton + push rings for each hand
   for (const em of emitters) {
     const pts = em.pts;
+    const sixth = em.sixth;
+
+    // Real 21-landmark skeleton bones — double stroke
     p.stroke(fg, 220);
     p.strokeWeight(3.2);
     for (const [a, b] of HAND_CONNECTIONS) {
@@ -190,10 +213,28 @@ export function draw(p, ctx) {
     for (const [a, b] of HAND_CONNECTIONS) {
       p.line(pts[a].x, pts[a].y, pts[b].x, pts[b].y);
     }
+
+    // ==== Fake 6th finger — extra bones attached from pinky MCP → 6th MCP → PIP → DIP → TIP
+    p.stroke(fg, 220);
+    p.strokeWeight(3.2);
+    p.line(pts[17].x, pts[17].y, sixth.mcp.x, sixth.mcp.y); // palm connection
+    p.line(sixth.mcp.x, sixth.mcp.y, sixth.pip.x, sixth.pip.y);
+    p.line(sixth.pip.x, sixth.pip.y, sixth.dip.x, sixth.dip.y);
+    p.line(sixth.dip.x, sixth.dip.y, sixth.tip.x, sixth.tip.y);
+    p.stroke(fg);
+    p.strokeWeight(1.2);
+    p.line(pts[17].x, pts[17].y, sixth.mcp.x, sixth.mcp.y);
+    p.line(sixth.mcp.x, sixth.mcp.y, sixth.pip.x, sixth.pip.y);
+    p.line(sixth.pip.x, sixth.pip.y, sixth.dip.x, sixth.dip.y);
+    p.line(sixth.dip.x, sixth.dip.y, sixth.tip.x, sixth.tip.y);
+
+    // Knuckle dots (real 5 + 6th MCP)
     p.noStroke();
     p.fill(fg);
     for (const idx of KNUCKLES) p.circle(pts[idx].x, pts[idx].y, 12);
+    p.circle(sixth.mcp.x, sixth.mcp.y, 11);
 
+    // Fingertips (real 5)
     for (const idx of FINGERTIPS) {
       const q = pts[idx];
       p.noFill();
@@ -207,6 +248,26 @@ export function draw(p, ctx) {
       p.fill(fg);
       p.circle(q.x, q.y, 16);
     }
+
+    // 6th fingertip — slightly smaller markers to hint at the anomaly
+    const q6 = sixth.tip;
+    p.noFill();
+    p.stroke(fg, 90);
+    p.strokeWeight(1);
+    p.circle(q6.x, q6.y, REPEL_R * 2);
+    p.stroke(fg, 160);
+    p.strokeWeight(1.5);
+    p.circle(q6.x, q6.y, 82 + Math.sin(t * 3 + 21) * 10);
+    p.noStroke();
+    p.fill(fg);
+    p.circle(q6.x, q6.y, 14);
+    // Tiny "6" mark near the anomaly tip
+    p.fill(fg, 180);
+    p.textFont('JetBrains Mono');
+    p.textStyle(p.BOLD);
+    p.textSize(11);
+    p.textAlign(p.LEFT, p.TOP);
+    p.text('6', q6.x + 18, q6.y - 20);
   }
 
   // Emit visuals — solid palm center + expanding rings for BOTH hands

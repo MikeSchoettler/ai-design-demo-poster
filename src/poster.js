@@ -33,37 +33,67 @@ export function drawPoster(p, ctx) {
   });
   p.noStroke();
 
-  // ===== HEADER (крошки) =====
+  // ===== HEADER (крошки) — dynamic layout depending on logo height =====
   const headerY = M + 30;
+  const logoImg = ui.logoImage;
+  const hasImgLogo =
+    logoImg && logoImg.complete && logoImg.naturalWidth > 0 && logoImg.naturalHeight > 0;
+  let logoBlockH = SIZE_META;
+
+  if (hasImgLogo) {
+    const h = ui.logoSize || 24;
+    const w = h * (ui.logoAspect || logoImg.naturalWidth / logoImg.naturalHeight);
+    // If light palette, invert the image so dark logos read on white bg
+    const dc = p.drawingContext;
+    dc.save();
+    if (ui.invert) {
+      dc.filter = 'invert(1)';
+    }
+    dc.drawImage(logoImg, colA, headerY, w, h);
+    dc.restore();
+    logoBlockH = h;
+  } else {
+    p.textFont('JetBrains Mono');
+    p.textStyle(p.BOLD);
+    p.textAlign(p.LEFT, p.TOP);
+    p.textSize(SIZE_META);
+    p.fill(fg);
+    p.text(ui.logo || 'Фантех', colA, headerY);
+  }
+
+  // ОБМЕН ОПЫТОМ on right (aligned to logo top)
   p.textFont('JetBrains Mono');
   p.textStyle(p.BOLD);
-  p.textAlign(p.LEFT, p.TOP);
+  p.textAlign(p.RIGHT, p.TOP);
   p.textSize(SIZE_META);
   p.fill(fg);
-  p.text(ui.logo || 'Фантех', colA, headerY);
-
-  p.textAlign(p.RIGHT, p.TOP);
   p.text((ui.exchange || 'ОБМЕН ОПЫТОМ').toUpperCase(), contentX1, headerY);
 
-  // Sub-header row: edition / date
+  // Sub-header row — positioned below the tallest of {logo, right label}
+  const subHeaderY = headerY + Math.max(logoBlockH, SIZE_META) + 12;
   p.textStyle(p.NORMAL);
   p.textSize(SIZE_META);
   p.fill(dim);
   p.textAlign(p.LEFT, p.TOP);
-  p.text(ui.edition || 'SESSION · 01', colA, headerY + 26);
+  p.text(ui.edition || 'SESSION · 01', colA, subHeaderY);
   p.textAlign(p.RIGHT, p.TOP);
-  p.text(ui.date || nowStamp(), contentX1, headerY + 26);
+  p.text(ui.date || nowStamp(), contentX1, subHeaderY);
 
+  // Rule below sub-header
+  const ruleY = subHeaderY + SIZE_META + 14;
   p.stroke(fg, 90);
   p.strokeWeight(1);
-  p.line(colA, headerY + 56, contentX1, headerY + 56);
+  p.line(colA, ruleY, contentX1, ruleY);
   p.noStroke();
+
+  // Title top — reflows with header
+  const titleTop = ruleY + 30;
 
   const template = ui.template || 'manifesto';
   if (template === 'speaker') {
-    drawSpeaker(p, ctx, { fg, dim, colA, contentW, M });
+    drawSpeaker(p, ctx, { fg, dim, colA, contentW, M, titleTop });
   } else {
-    drawManifesto(p, ctx, { fg, dim, colA, contentW, M });
+    drawManifesto(p, ctx, { fg, dim, colA, contentW, M, titleTop });
   }
 
   // ===== INSTRUMENT STRIP =====
@@ -116,7 +146,7 @@ export function drawPoster(p, ctx) {
 
 // ---- Manifesto: BIG title, small subtitle in 2/3 width ----
 function drawManifesto(p, ctx, opts) {
-  const { fg, dim, colA, contentW, M } = opts;
+  const { fg, dim, colA, contentW, titleTop } = opts;
   const { ui, H } = ctx;
 
   p.textFont('JetBrains Mono');
@@ -125,7 +155,7 @@ function drawManifesto(p, ctx, opts) {
   p.textSize(SIZE_H1);
   p.textLeading(SIZE_H1 * 0.94);
   p.textAlign(p.LEFT, p.TOP);
-  p.text(ui.title || 'AI Дизайн\nДемо', colA, M + 108);
+  p.text(ui.title || 'AI Дизайн\nДемо', colA, titleTop);
 
   const divY = H * 0.5;
   p.stroke(fg, 100);
@@ -153,7 +183,7 @@ function drawManifesto(p, ctx, opts) {
 
 // ---- Speaker: small title at top, HUGE speaker + topic block BOTTOM-anchored ----
 function drawSpeaker(p, ctx, opts) {
-  const { fg, dim, colA, contentW, M } = opts;
+  const { fg, dim, colA, contentW, M, titleTop } = opts;
   const { ui, H } = ctx;
 
   // Small title (~3× smaller than manifesto)
@@ -164,9 +194,9 @@ function drawSpeaker(p, ctx, opts) {
   p.textLeading(SIZE_BODY * 1.05);
   p.textAlign(p.LEFT, p.TOP);
   const collapsedTitle = (ui.title || 'AI Дизайн Демо').replace(/\n/g, ' ');
-  p.text(collapsedTitle, colA, M + 108);
+  p.text(collapsedTitle, colA, titleTop);
 
-  const divY = M + 108 + SIZE_BODY + 24;
+  const divY = titleTop + SIZE_BODY + 24;
   p.stroke(fg, 100);
   p.strokeWeight(1);
   p.line(colA, divY, colA + contentW, divY);

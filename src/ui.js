@@ -13,6 +13,9 @@ export const uiState = {
   speaker: 'Имя Фамилия, Команда',
   topic: 'Тема выступления',
   logo: 'Фантех',
+  logoImage: null,      // HTMLImageElement — draws instead of text logo when set
+  logoAspect: 1,        // width / height ratio of loaded image
+  logoSize: 24,         // rendered height in px
   exchange: 'Обмен опытом',
   edition: 'SESSION · 01',
   date: '', // auto-filled via nowStamp() when empty (Month YYYY)
@@ -90,8 +93,15 @@ export function setupUI() {
 
     <div class="panel-section">
       <h3 class="panel-title">Крошки в углах</h3>
-      <label>Лого (top-left)</label>
+      <label>Лого — текст (fallback)</label>
       <input type="text" id="ui-logo" />
+      <label>Лого — файл (заменяет текст)</label>
+      <input type="file" id="ui-logo-file" accept="image/*" />
+      <div class="toggle-row" style="margin-top:6px">
+        <button class="toggle-btn" id="ui-logo-clear">Убрать файл</button>
+      </div>
+      <div class="range-row"><label style="margin:0">Высота лого</label><span id="logo-size-val">24 px</span></div>
+      <input type="range" id="ui-logo-size" min="16" max="120" step="1" />
       <label>"Обмен опытом" тег</label>
       <input type="text" id="ui-exchange" />
       <label>Edition (N°)</label>
@@ -193,6 +203,39 @@ export function setupUI() {
   bindText('ui-subtitle', 'subtitle');
   bindText('ui-speaker', 'speaker');
   bindText('ui-topic', 'topic');
+
+  // Logo image upload
+  const logoFile = document.getElementById('ui-logo-file');
+  logoFile.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        uiState.logoImage = img;
+        uiState.logoAspect = img.naturalWidth / img.naturalHeight;
+      };
+      img.onerror = () => {
+        console.warn('[logo] failed to load image');
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('ui-logo-clear').addEventListener('click', () => {
+    uiState.logoImage = null;
+    uiState.logoAspect = 1;
+    logoFile.value = '';
+  });
+  const logoSizeSlider = document.getElementById('ui-logo-size');
+  const logoSizeVal = document.getElementById('logo-size-val');
+  logoSizeSlider.value = uiState.logoSize;
+  logoSizeVal.textContent = `${uiState.logoSize} px`;
+  logoSizeSlider.addEventListener('input', (e) => {
+    uiState.logoSize = parseInt(e.target.value, 10);
+    logoSizeVal.textContent = `${uiState.logoSize} px`;
+  });
   bindText('ui-logo', 'logo');
   bindText('ui-exchange', 'exchange');
   bindText('ui-edition', 'edition');
