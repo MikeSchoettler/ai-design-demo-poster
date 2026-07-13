@@ -7,13 +7,16 @@ let stopTimer = null;
 let currentMime = '';
 let currentExt = 'webm';
 
+const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
 const MIME_CANDIDATES = [
-  // MP4 with H.264 + AAC — preferred when browser supports (Chromium 126+, Safari)
+  // MP4 first — iOS Safari 14.3+ and Chromium 126+ can record it natively.
+  // Web Share on iOS accepts MP4 into Photos; WebM is not accepted.
   'video/mp4;codecs=avc1.42E01F,mp4a.40.2',
   'video/mp4;codecs=avc1,mp4a',
   'video/mp4;codecs=h264,aac',
   'video/mp4',
-  // WebM fallback (always works on Chromium)
+  // WebM fallback for other Chromium browsers
   'video/webm;codecs=vp9,opus',
   'video/webm;codecs=vp8,opus',
   'video/webm;codecs=vp9',
@@ -23,9 +26,7 @@ const MIME_CANDIDATES = [
 
 export function initRecorder(canvasEl) {
   canvas = canvasEl;
-  // Log first supported mime on init so user can see in dev console
-  const pick = pickMime();
-  console.log('[recorder] preferred mime:', pick);
+  console.log('[recorder] preferred mime:', pickMime(), '· touch:', IS_TOUCH);
 }
 
 function pickMime() {
@@ -45,11 +46,24 @@ export function getRecordingFormat() {
   };
 }
 
+// Sync data-URL → Blob so navigator.share can be called immediately from a
+// user gesture (iOS Safari requirement — activation expires after ~5s and
+// canvas.toBlob's async callback can eat the window).
+function dataURLToBlob(dataURL) {
+  const [prefix, b64] = dataURL.split(',');
+  const mime = prefix.match(/:(.*?);/)[1];
+  const bytes = atob(b64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
 export function snapPNG() {
   if (!canvas) return;
-  canvas.toBlob((blob) => {
-    if (blob) download(blob, `ai-demo-poster-${stamp()}.png`);
-  }, 'image/png');
+  // Sync conversion → share/download runs within the same click's activation.
+  const dataURL = canvas.toDataURL('image/png');
+  const blob = dataURLToBlob(dataURL);
+  handleFile(blob, `ai-demo-poster-${stamp()}.png`, /*needsFreshClick*/ false);
 }
 
 export function startRecording(durationMs = 8000, onDone) {
@@ -63,12 +77,10 @@ export function startRecording(durationMs = 8000, onDone) {
   currentMime = mime;
   currentExt = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
 
-  // Compose stream: canvas video track + mic audio track (if available)
   const canvasStream = canvas.captureStream(30);
   const tracks = [...canvasStream.getVideoTracks()];
   if (audioState.stream) {
-    const audioTracks = audioState.stream.getAudioTracks();
-    for (const t of audioTracks) tracks.push(t);
+    for (const t of audioState.stream.getAudioTracks()) tracks.push(t);
   }
   const combinedStream = new MediaStream(tracks);
 
@@ -90,7 +102,10 @@ export function startRecording(durationMs = 8000, onDone) {
   mediaRecorder.onstop = () => {
     const type = currentExt === 'mp4' ? 'video/mp4' : 'video/webm';
     const blob = new Blob(chunks, { type });
-    download(blob, `ai-demo-poster-${stamp()}.${currentExt}`);
+    // After 8s recording, the original click activation is long expired.
+    // On touch devices, share() only works from a fresh click → show a
+    // manual "Save to gallery" button. On desktop, straight download.
+    handleFile(blob, `ai-demo-poster-${stamp()}.${currentExt}`, /*needsFreshClick*/ true);
     mediaRecorder = null;
     stopTimer = null;
     onDone?.();
@@ -105,19 +120,20 @@ export function isRecording() {
   return mediaRecorder?.state === 'recording';
 }
 
-function stamp() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-}
-
-const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-
-async function shareOrDownload(blob, name) {
-  // On touch devices, prefer Web Share API — iOS/Android show a system share
-  // sheet with "Save Image" / "Save Video" which puts the file into the
-  // Photos / Gallery. On desktop we fall through to standard download.
-  if (IS_TOUCH && navigator.share && navigator.canShare) {
+// Unified dispatch: on desktop → download; on touch → try share now if
+// activation is still valid, else show a "Save" button so the user taps
+// with fresh activation.
+async function handleFile(blob, name, needsFreshClick) {
+  if (!IS_TOUCH) {
+    downloadAnchor(blob, name);
+    return;
+  }
+  if (needsFreshClick) {
+    showSaveButton(blob, name);
+    return;
+  }
+  // Try immediate share while activation is fresh
+  if (navigator.share && navigator.canShare) {
     try {
       const file = new File([blob], name, { type: blob.type });
       if (navigator.canShare({ files: [file] })) {
@@ -125,14 +141,15 @@ async function shareOrDownload(blob, name) {
         return;
       }
     } catch (e) {
-      if (e.name !== 'AbortError') {
-        console.warn('[recorder] share failed, falling back to download:', e);
-      } else {
-        return; // user cancelled — nothing to do
-      }
+      if (e.name === 'AbortError') return;
+      console.warn('[recorder] share failed, showing save button:', e);
     }
   }
-  // Fallback anchor download
+  // Share unavailable / failed → save button as fallback
+  showSaveButton(blob, name);
+}
+
+function downloadAnchor(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -145,6 +162,67 @@ async function shareOrDownload(blob, name) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function download(blob, name) {
-  shareOrDownload(blob, name);
+function showSaveButton(blob, name) {
+  const existing = document.getElementById('save-btn-modal');
+  if (existing) existing.remove();
+
+  const btn = document.createElement('button');
+  btn.id = 'save-btn-modal';
+  btn.style.cssText = [
+    'position:fixed',
+    'bottom:80px',
+    'left:50%',
+    'transform:translateX(-50%)',
+    'padding:16px 26px',
+    'background:#f2f2f2',
+    'color:#000',
+    'border:none',
+    "font-family:'JetBrains Mono', monospace",
+    'font-weight:700',
+    'letter-spacing:0.1em',
+    'font-size:13px',
+    'z-index:500',
+    'cursor:pointer',
+    'box-shadow:0 8px 30px rgba(0,0,0,0.5)',
+    'text-transform:uppercase',
+    'animation:pulse 1.2s infinite',
+  ].join(';');
+  const kind = name.endsWith('.png') ? 'фото' : 'видео';
+  btn.textContent = `💾 Сохранить ${kind}`;
+  document.body.appendChild(btn);
+
+  const doShare = async () => {
+    try {
+      const file = new File([blob], name, { type: blob.type });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: name });
+        btn.remove();
+        return;
+      }
+      // No share — open blob in new tab so user can long-press → Save to Photos
+      window.open(URL.createObjectURL(blob), '_blank');
+      btn.remove();
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        btn.remove();
+        return;
+      }
+      console.warn('[recorder] save button share failed:', e);
+      window.open(URL.createObjectURL(blob), '_blank');
+      btn.remove();
+    }
+  };
+
+  btn.addEventListener('click', doShare);
+
+  // Auto-cleanup after a minute if user ignores it
+  setTimeout(() => {
+    if (btn.parentNode) btn.remove();
+  }, 60_000);
+}
+
+function stamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }

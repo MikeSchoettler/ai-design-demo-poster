@@ -28,15 +28,20 @@ const sketch = (p) => {
     c.parent('canvas-wrap');
     p.pixelDensity(1);
     p.frameRate(30);
-    p.textFont('Space Grotesk');
-    switchTo(uiState.currentMode);
+    p.textFont('JetBrains Mono');
+    // Pre-init ALL modes at boot so switching is instant — no allocation of
+    // 20k+ particles per switch (which stalled Safari for ~200ms each time).
+    // Each mode keeps its state in its own ctx namespace so they coexist.
+    for (const key of Object.keys(MODES)) {
+      if (MODES[key].init) MODES[key].init(p, ctx);
+    }
+    currentKey = uiState.currentMode;
+    current = MODES[currentKey];
   };
 
   function switchTo(key) {
-    if (current?.cleanup) current.cleanup(p, ctx);
     currentKey = key;
     current = MODES[key];
-    if (current?.init) current.init(p, ctx);
   }
 
   let fpsSmoothed = 30;
