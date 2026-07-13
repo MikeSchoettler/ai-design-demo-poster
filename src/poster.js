@@ -1,3 +1,9 @@
+// ===== 4 SIZE SYSTEM =====
+const SIZE_H1 = 132;   // Hero — Manifesto title
+const SIZE_H2 = 84;    // Big — Speaker hero pair (name+team / topic)
+const SIZE_BODY = 40;  // Body — Manifesto subtitle, Speaker title, strip values
+const SIZE_META = 16;  // Meta — labels, crumbs, footer
+
 export function drawPoster(p, ctx) {
   const { W, H, ui } = ctx;
   const fg = ui.invert ? 15 : 240;
@@ -29,10 +35,10 @@ export function drawPoster(p, ctx) {
 
   // ===== HEADER (крошки) =====
   const headerY = M + 30;
-  p.textFont('Roboto Mono');
+  p.textFont('JetBrains Mono');
   p.textStyle(p.BOLD);
   p.textAlign(p.LEFT, p.TOP);
-  p.textSize(17);
+  p.textSize(SIZE_META);
   p.fill(fg);
   p.text(ui.logo || 'Фантех', colA, headerY);
 
@@ -41,7 +47,7 @@ export function drawPoster(p, ctx) {
 
   // Sub-header row: edition / date
   p.textStyle(p.NORMAL);
-  p.textSize(13);
+  p.textSize(SIZE_META);
   p.fill(dim);
   p.textAlign(p.LEFT, p.TOP);
   p.text(ui.edition || 'SESSION · 01', colA, headerY + 26);
@@ -50,70 +56,14 @@ export function drawPoster(p, ctx) {
 
   p.stroke(fg, 90);
   p.strokeWeight(1);
-  p.line(colA, headerY + 54, contentX1, headerY + 54);
+  p.line(colA, headerY + 56, contentX1, headerY + 56);
   p.noStroke();
 
-  // ===== TITLE =====
-  p.textFont('Roboto Mono');
-  p.textStyle(p.BOLD);
-  p.fill(fg);
-  const titleSize = 148;
-  p.textSize(titleSize);
-  p.textLeading(titleSize * 0.92);
-  p.textAlign(p.LEFT, p.TOP);
-  p.text(ui.title || 'AI Дизайн\nДемо', colA, M + 108);
-
-  // ===== SUBTITLE / SPEAKER BLOCK =====
-  const divY = H * 0.5;
-  p.stroke(fg, 100);
-  p.strokeWeight(1);
-  p.line(colA, divY, contentX1, divY);
-  p.noStroke();
-
-  const subTop = divY + 30;
-  p.textFont('Roboto Mono');
-  p.textAlign(p.LEFT, p.TOP);
-
-  if ((ui.template || 'manifesto') === 'speaker') {
-    // Speaker template: name + team, then topic
-    p.textStyle(p.BOLD);
-    p.textSize(13);
-    p.fill(dim);
-    p.text('СПИКЕР', colA, subTop);
-
-    p.textStyle(p.NORMAL);
-    p.textSize(24);
-    p.textLeading(32);
-    p.fill(fg);
-    const speakerLine = [ui.speaker || 'Имя Фамилия', ui.team || 'Команда']
-      .filter(Boolean)
-      .join(', ');
-    p.text(speakerLine, colA, subTop + 22, contentW);
-
-    p.textStyle(p.BOLD);
-    p.textSize(13);
-    p.fill(dim);
-    p.text('ТЕМА', colA, subTop + 88);
-
-    p.textStyle(p.NORMAL);
-    p.textSize(24);
-    p.textLeading(32);
-    p.fill(fg);
-    p.text(ui.topic || 'Тема выступления', colA, subTop + 110, contentW);
+  const template = ui.template || 'manifesto';
+  if (template === 'speaker') {
+    drawSpeaker(p, ctx, { fg, dim, colA, contentW, M });
   } else {
-    // Manifesto template: multi-line description
-    p.textStyle(p.BOLD);
-    p.textSize(13);
-    p.fill(dim);
-    p.text('О ФОРМАТЕ', colA, subTop);
-
-    p.textStyle(p.NORMAL);
-    p.textSize(24);
-    p.textLeading(34);
-    p.fill(fg);
-    const manifestoDefault =
-      'Разбираем реальные задачи дизайн-функции Фантеха и показываем, как AI помогает их решать.';
-    p.text(ui.subtitle || manifestoDefault, colA, subTop + 22, contentW);
+    drawManifesto(p, ctx, { fg, dim, colA, contentW, M });
   }
 
   // ===== INSTRUMENT STRIP =====
@@ -127,18 +77,18 @@ export function drawPoster(p, ctx) {
   p.line(colA, stripDivY, contentX1, stripDivY);
   p.noStroke();
 
-  p.textFont('Roboto Mono');
+  p.textFont('JetBrains Mono');
   p.textStyle(p.BOLD);
   p.textAlign(p.LEFT, p.TOP);
-  p.textSize(12);
+  p.textSize(SIZE_META);
   p.fill(dim);
   p.text('TIMECODE', colA, stripTopY);
   p.text('FRAME', colB2, stripTopY);
   p.textStyle(p.NORMAL);
-  p.textSize(19);
+  p.textSize(24);
   p.fill(fg);
-  p.text(timecode(), colA + 92, stripTopY - 3);
-  p.text(pad5(p.frameCount), colB2 + 66, stripTopY - 3);
+  p.text(timecode(), colA + 118, stripTopY - 4);
+  p.text(pad5(p.frameCount), colB2 + 88, stripTopY - 4);
 
   drawEqualizer(p, ctx, colA, eqY, contentW, eqH, fg);
 
@@ -150,10 +100,10 @@ export function drawPoster(p, ctx) {
 
   // ===== FOOTER — крошки внизу =====
   const footerY = H - M - PAD;
-  p.textFont('Roboto Mono');
+  p.textFont('JetBrains Mono');
   p.textStyle(p.BOLD);
   p.textAlign(p.LEFT, p.BOTTOM);
-  p.textSize(15);
+  p.textSize(SIZE_META);
   p.fill(fg);
   p.text((ui.exchange || 'ОБМЕН ОПЫТОМ').toUpperCase(), colA, footerY);
   p.textAlign(p.RIGHT, p.BOTTOM);
@@ -162,6 +112,117 @@ export function drawPoster(p, ctx) {
   p.text('AI · ДИЗАЙН · ДЕМО', contentX1, footerY);
 
   p.pop();
+}
+
+// ---- Manifesto: BIG title, small subtitle in 2/3 width ----
+function drawManifesto(p, ctx, opts) {
+  const { fg, dim, colA, contentW, M } = opts;
+  const { ui, H } = ctx;
+
+  p.textFont('JetBrains Mono');
+  p.textStyle(p.BOLD);
+  p.fill(fg);
+  p.textSize(SIZE_H1);
+  p.textLeading(SIZE_H1 * 0.94);
+  p.textAlign(p.LEFT, p.TOP);
+  p.text(ui.title || 'AI Дизайн\nДемо', colA, M + 108);
+
+  const divY = H * 0.5;
+  p.stroke(fg, 100);
+  p.strokeWeight(1);
+  p.line(colA, divY, colA + contentW, divY);
+  p.noStroke();
+
+  const subTop = divY + 30;
+  p.textStyle(p.BOLD);
+  p.textSize(SIZE_META);
+  p.fill(dim);
+  p.textAlign(p.LEFT, p.TOP);
+  p.text('О ФОРМАТЕ', colA, subTop);
+
+  // Subtitle in 2/3 width
+  const subW = Math.floor(contentW * (2 / 3));
+  p.textStyle(p.NORMAL);
+  p.textSize(SIZE_BODY);
+  p.textLeading(SIZE_BODY * 1.22);
+  p.fill(fg);
+  const manifestoDefault =
+    'Разбираем реальные задачи дизайн-функции Фантеха и показываем, как AI помогает их решать.';
+  p.text(ui.subtitle || manifestoDefault, colA, subTop + 30, subW);
+}
+
+// ---- Speaker: small title, HUGE speaker + topic ----
+function drawSpeaker(p, ctx, opts) {
+  const { fg, dim, colA, contentW, M } = opts;
+  const { ui } = ctx;
+
+  // Small title (~3× smaller than manifesto)
+  p.textFont('JetBrains Mono');
+  p.textStyle(p.BOLD);
+  p.fill(fg);
+  p.textSize(SIZE_BODY);
+  p.textLeading(SIZE_BODY * 1.05);
+  p.textAlign(p.LEFT, p.TOP);
+  const collapsedTitle = (ui.title || 'AI Дизайн Демо').replace(/\n/g, ' ');
+  p.text(collapsedTitle, colA, M + 108);
+
+  const divY = M + 108 + SIZE_BODY + 24;
+  p.stroke(fg, 100);
+  p.strokeWeight(1);
+  p.line(colA, divY, colA + contentW, divY);
+  p.noStroke();
+
+  const y0 = divY + 40;
+
+  // СПИКЕР label
+  p.textStyle(p.BOLD);
+  p.textSize(SIZE_META);
+  p.fill(dim);
+  p.text('СПИКЕР', colA, y0);
+
+  // Speaker H2 line — combined "Имя Фамилия, Команда"
+  p.textStyle(p.BOLD);
+  p.textSize(SIZE_H2);
+  p.textLeading(SIZE_H2 * 0.98);
+  p.fill(fg);
+  const speakerLine = [ui.speaker || 'Имя Фамилия', ui.team || 'Команда']
+    .filter(Boolean)
+    .join(', ');
+  p.text(speakerLine, colA, y0 + 26, contentW);
+  const speakerBlockH = estimateWrappedHeight(speakerLine, contentW, SIZE_H2, SIZE_H2 * 0.98);
+
+  const y1 = y0 + 26 + speakerBlockH + 34;
+
+  // ТЕМА label
+  p.textStyle(p.BOLD);
+  p.textSize(SIZE_META);
+  p.fill(dim);
+  p.text('ТЕМА', colA, y1);
+
+  // Topic H2
+  p.textStyle(p.BOLD);
+  p.textSize(SIZE_H2);
+  p.textLeading(SIZE_H2 * 0.98);
+  p.fill(fg);
+  p.text(ui.topic || 'Тема выступления', colA, y1 + 26, contentW);
+}
+
+function estimateWrappedHeight(str, w, size, leading) {
+  const perChar = size * 0.6;
+  const charsPerLine = Math.max(1, Math.floor(w / perChar));
+  const words = String(str).split(/\s+/);
+  let lines = 1;
+  let cur = 0;
+  for (const wd of words) {
+    const len = wd.length + (cur > 0 ? 1 : 0);
+    if (cur + len > charsPerLine) {
+      lines++;
+      cur = wd.length;
+    } else {
+      cur += len;
+    }
+  }
+  return lines * leading;
 }
 
 function drawEqualizer(p, ctx, x, y, w, h, fg) {
