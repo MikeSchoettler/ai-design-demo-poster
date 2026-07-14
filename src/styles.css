@@ -444,3 +444,99 @@ input[type="range"]::-webkit-slider-thumb {
     max-width: calc(100% - 24px);
   }
 }
+
+/* ================= START OVERLAY ================= */
+#start-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, #101010 0%, #030303 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 500;
+  opacity: 1;
+  transition: opacity 0.3s ease-out;
+}
+#start-overlay[hidden] { display: none; }
+#start-overlay.fading { opacity: 0; pointer-events: none; }
+
+.start-card {
+  max-width: 460px;
+  width: 100%;
+  background: #0d0d0d;
+  border: 1px solid var(--line-hi);
+  padding: 34px 30px 30px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ink);
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
+}
+.start-brand {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  margin-bottom: 18px;
+}
+.start-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 12px;
+  line-height: 1.2;
+}
+.start-body {
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 0 0 22px;
+}
+.start-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.start-btn {
+  padding: 14px 18px;
+  background: transparent;
+  border: 1px solid var(--line-hi);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.start-btn:hover { border-color: var(--ink); }
+.start-btn.primary {
+  background: var(--ink);
+  color: #000;
+  border-color: var(--ink);
+}
+.start-btn.primary:hover { background: #fff; }
+.start-btn:disabled { opacity: 0.4; cursor: default; }
+
+.start-status {
+  margin-top: 18px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  min-height: 14px;
+  line-height: 1.5;
+}
+.start-status.err { color: #e08a8a; }
+.start-status.ok { color: #8ac48a; }
+
+.start-hint {
+  margin-top: 14px;
+  font-size: 10px;
+  line-height: 1.65;
+  color: var(--ink-mute);
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-hi);
+}

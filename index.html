@@ -26,6 +26,27 @@
       </div>
       <aside id="panel"></aside>
     </div>
+
+    <div id="start-overlay">
+      <div class="start-card">
+        <div class="start-brand">AI DESIGN DEMO · POSTER GEN</div>
+        <h1 class="start-title">Разреши камеру и микрофон</h1>
+        <p class="start-body">
+          Постер реагирует на голос и движение. Всё считается локально в браузере —
+          ничего наружу не уходит.
+        </p>
+        <div class="start-actions">
+          <button id="start-full" class="start-btn primary">Разрешить и начать</button>
+          <button id="start-flow" class="start-btn">Продолжить без камеры/микрофона</button>
+        </div>
+        <div id="start-status" class="start-status">Ждём клика — Yandex Browser покажет prompt только после нажатия</div>
+        <div id="start-hint" class="start-hint" hidden>
+          Prompt не появился? Открой замочек слева от адресной строки → «Разрешения»
+          → включи камеру и микрофон → перезагрузи страницу.
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

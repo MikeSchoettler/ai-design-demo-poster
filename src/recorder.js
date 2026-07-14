@@ -63,30 +63,62 @@ function dataURLToBlob(dataURL) {
 }
 
 export function snapPNG() {
-  if (!canvas) return;
-  // Sync conversion → share/download runs within the same click's activation.
-  const dataURL = canvas.toDataURL('image/png');
+  if (!canvas) {
+    console.warn('[recorder] snapPNG: canvas not ready yet');
+    return;
+  }
+  let dataURL;
+  try {
+    dataURL = canvas.toDataURL('image/png');
+  } catch (e) {
+    console.error('[recorder] toDataURL failed:', e);
+    alert(
+      e.name === 'SecurityError'
+        ? 'Не могу сохранить PNG: canvas был засвечен внешним ресурсом. Перезагрузи страницу.'
+        : `Не могу сохранить PNG: ${e.message}`
+    );
+    return;
+  }
   const blob = dataURLToBlob(dataURL);
   handleFile(blob, `ai-demo-poster-${stamp()}.png`, /*needsFreshClick*/ false);
 }
 
 export function startRecording(durationMs = 8000, onDone) {
-  if (!canvas || mediaRecorder) return;
+  if (!canvas) {
+    console.warn('[recorder] startRecording: canvas not ready yet');
+    onDone?.();
+    return;
+  }
+  if (mediaRecorder) {
+    console.warn('[recorder] already recording, ignoring');
+    return;
+  }
 
   const mime = pickMime();
   if (!mime) {
     console.warn('[recorder] no supported mime type');
+    alert('Браузер не поддерживает MediaRecorder — попробуй Chrome/Safari');
+    onDone?.();
     return;
   }
   currentMime = mime;
   currentExt = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+  console.log('[recorder] starting', durationMs + 'ms', '·', mime);
 
-  const canvasStream = canvas.captureStream(30);
-  const tracks = [...canvasStream.getVideoTracks()];
-  if (audioState.stream) {
-    for (const t of audioState.stream.getAudioTracks()) tracks.push(t);
+  let combinedStream;
+  try {
+    const canvasStream = canvas.captureStream(30);
+    const tracks = [...canvasStream.getVideoTracks()];
+    if (audioState.stream) {
+      for (const t of audioState.stream.getAudioTracks()) tracks.push(t);
+    }
+    combinedStream = new MediaStream(tracks);
+  } catch (e) {
+    console.error('[recorder] captureStream failed:', e);
+    alert(`Не могу захватить canvas: ${e.message}`);
+    onDone?.();
+    return;
   }
-  const combinedStream = new MediaStream(tracks);
 
   const options = {
     mimeType: mime,
@@ -98,17 +130,31 @@ export function startRecording(durationMs = 8000, onDone) {
     mediaRecorder = new MediaRecorder(combinedStream, options);
   } catch (e) {
     console.error('[recorder] MediaRecorder init failed:', e, 'mime:', mime);
+    alert(`MediaRecorder не запустился: ${e.message}`);
+    onDone?.();
     return;
   }
 
   chunks = [];
   mediaRecorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  mediaRecorder.onerror = (e) => {
+    console.error('[recorder] error event:', e);
+  };
   mediaRecorder.onstop = () => {
     const type = currentExt === 'mp4' ? 'video/mp4' : 'video/webm';
     const blob = new Blob(chunks, { type });
-    // After 8s recording, the original click activation is long expired.
-    // On touch devices, share() only works from a fresh click → show a
-    // manual "Save to gallery" button. On desktop, straight download.
+    const sizeKb = Math.round(blob.size / 1024);
+    console.log('[recorder] stopped', sizeKb + ' KB', '·', currentExt);
+    if (blob.size < 2048) {
+      alert(
+        `Запись получилась пустая (${sizeKb} KB) — вероятно, кодек ${currentExt.toUpperCase()} ` +
+        `в этом браузере не работает. Попробуй ещё раз или открой в Chrome/Safari.`
+      );
+      mediaRecorder = null;
+      stopTimer = null;
+      onDone?.();
+      return;
+    }
     handleFile(blob, `ai-demo-poster-${stamp()}.${currentExt}`, /*needsFreshClick*/ true);
     mediaRecorder = null;
     stopTimer = null;

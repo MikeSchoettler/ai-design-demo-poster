@@ -1,4 +1,5 @@
 import { snapPNG, startRecording, isRecording, getRecordingFormat } from './recorder.js';
+import { ensureFaceLandmarker, ensureHandLandmarker, cameraState } from './camera.js';
 
 export const uiState = {
   currentMode: 'flow',
@@ -179,8 +180,38 @@ export function setupUI() {
     const hud = document.getElementById('hud-mode');
     if (hud) hud.textContent = MODE_LABELS[key].toUpperCase();
     showModeHint(key);
+    maybeLoadModelFor(key);
   }
   uiState._setMode = setMode;
+
+  // Lazy-load MediaPipe assets only when their mode is opened. Face model = 3.6 MB,
+  // hand model = 7.5 MB, WASM = 11 MB — deferring these saves ~22 MB on cold boot.
+  function maybeLoadModelFor(key) {
+    if (cameraState.status !== 'camera-ready' && cameraState.status !== 'ready') return;
+    if (key === 'face' && !cameraState.faceLandmarker) {
+      showTemporaryHint('Загружаю модель лица · ~3.6 MB…');
+      ensureFaceLandmarker().then((r) => {
+        if (r.ok) showTemporaryHint('Модель лица готова');
+        else showTemporaryHint(`Модель лица не загрузилась: ${r.reason}`);
+      });
+    }
+    if (key === 'hand' && !cameraState.handLandmarker) {
+      showTemporaryHint('Загружаю модель рук · ~7.5 MB…');
+      ensureHandLandmarker().then((r) => {
+        if (r.ok) showTemporaryHint('Модель рук готова');
+        else showTemporaryHint(`Модель рук не загрузилась: ${r.reason}`);
+      });
+    }
+  }
+
+  function showTemporaryHint(text) {
+    const el = document.getElementById('mode-hint');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.add('visible');
+    clearTimeout(_hintTimer);
+    _hintTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+  }
 
   const camToggle = document.getElementById('camera-toggle');
   const setCam = (val) => {

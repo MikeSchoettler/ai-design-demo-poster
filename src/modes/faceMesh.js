@@ -1,4 +1,3 @@
-import { FaceLandmarker } from '@mediapipe/tasks-vision';
 import { drawCameraCover, cameraState } from '../camera.js';
 
 const NUM_COLUMNS = 26;
@@ -265,25 +264,28 @@ export function draw(p, ctx) {
   ctx.face.headPrev = { x: bothEyesN.x, y: bothEyesN.y };
 
   // ==== Face tesselation ====
+  // faceMeshMeta is populated by ensureFaceLandmarker() when the mode is opened;
+  // if it's still null (mid-load), skip mesh rendering — landmarks still work.
+  const meta = ctx.camera.faceMeshMeta;
+  if (!meta) return;
   p.stroke(fg, 140);
   p.strokeWeight(0.55 + amp * 1.8);
   p.noFill();
-  const tess = FaceLandmarker.FACE_LANDMARKS_TESSELATION;
-  for (const c of tess) {
+  for (const c of meta.tesselation) {
     const a = projected[c.start];
     const b = projected[c.end];
     p.line(a.x, a.y, b.x, b.y);
   }
 
   const emph = [
-    FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
-    FaceLandmarker.FACE_LANDMARKS_LIPS,
-    FaceLandmarker.FACE_LANDMARKS_LEFT_EYE,
-    FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE,
-    FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW,
-    FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW,
-    FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS,
-    FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS,
+    meta.faceOval,
+    meta.lips,
+    meta.leftEye,
+    meta.rightEye,
+    meta.leftEyebrow,
+    meta.rightEyebrow,
+    meta.leftIris,
+    meta.rightIris,
   ];
   p.stroke(fg);
   p.strokeWeight(2.2 + amp * 4 + pulse * 4);

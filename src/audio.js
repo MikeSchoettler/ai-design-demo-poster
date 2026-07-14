@@ -1,18 +1,20 @@
 export const audioState = {
-  status: 'idle',
+  status: 'idle',   // 'idle' | 'requesting' | 'ready' | 'denied'
+  detail: '',
   ctx: null,
   analyser: null,
   timeData: null,
   freqData: null,
   amplitude: 0,
   freqBinCount: 0,
-  stream: null, // raw MediaStream so recorder can add mic audio track
+  stream: null,
 };
 
-export async function setupAudio() {
+export async function initAudio() {
+  if (audioState.status === 'ready') return { ok: true };
+  audioState.status = 'requesting';
   try {
-    // Disable Chrome's default DSP so music / speech survives into the recording.
-    // AGC + noiseSuppression + echoCancellation all mangle sustained audio.
+    // Disable DSP so music / shouts survive into the recording.
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: false,
@@ -49,9 +51,29 @@ export async function setupAudio() {
     }
 
     tick();
+    return { ok: true };
   } catch (e) {
-    console.warn('Mic denied:', e);
+    console.warn('[audio] init failed:', e);
     audioState.status = 'denied';
+    audioState.detail = e.message;
+    return { ok: false, reason: readableMicError(e), error: e };
+  }
+}
+
+function readableMicError(e) {
+  if (!e || !e.name) return 'Ошибка доступа к микрофону';
+  switch (e.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Микрофон запрещён — открой замочек слева от адреса и разреши';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'Микрофон не найден';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'Микрофон занят другим приложением';
+    default:
+      return `${e.name}: ${e.message}`;
   }
 }
 
