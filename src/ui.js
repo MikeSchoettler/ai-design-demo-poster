@@ -163,8 +163,8 @@ export function setupUI() {
         <button class="export-btn secondary" id="rec-10">Rec 10s</button>
       </div>
       <div class="export-row">
-        <button class="export-btn secondary" id="rec-gif-4">GIF 4s</button>
-        <button class="export-btn secondary" id="rec-gif-6">GIF 6s</button>
+        <button class="export-btn secondary" id="rec-gif-1">GIF 1s</button>
+        <button class="export-btn secondary" id="rec-gif-3">GIF 3s</button>
       </div>
       <p class="hint" id="format-hint">Format: —</p>
       <p class="hint">
@@ -334,8 +334,8 @@ export function setupUI() {
   document.getElementById('rec-10').textContent = `Rec 10s ${recLabel}`;
   document.getElementById('rec-6').addEventListener('click', () => tryRecord(6000, 'rec-6', `Rec 6s ${recLabel}`));
   document.getElementById('rec-10').addEventListener('click', () => tryRecord(10000, 'rec-10', `Rec 10s ${recLabel}`));
-  document.getElementById('rec-gif-4').addEventListener('click', () => tryGif(4000, 'rec-gif-4', 'GIF 4s'));
-  document.getElementById('rec-gif-6').addEventListener('click', () => tryGif(6000, 'rec-gif-6', 'GIF 6s'));
+  document.getElementById('rec-gif-1').addEventListener('click', () => tryGif(1000, 'rec-gif-1', 'GIF 1s'));
+  document.getElementById('rec-gif-3').addEventListener('click', () => tryGif(3000, 'rec-gif-3', 'GIF 3s'));
 
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
@@ -429,8 +429,8 @@ function setupMobileControls() {
     mgif.classList.add('recording');
     mgif.textContent = '● GIF 0%';
     startGifRecording(
-      4000,
-      { fps: 15, scale: 0.5, maxColors: 128 },
+      3000,
+      { fps: 6, scale: 0.5, maxColors: 128 },
       ({ phase, pct }) => {
         const label = phase === 'capture' ? '● REC' : '⚙ ENC';
         mgif.textContent = `${label} ${Math.round(pct * 100)}%`;
@@ -474,7 +474,7 @@ function tryGif(ms, btnId, restoreLabel) {
   };
   startGifRecording(
     ms,
-    { fps: 15, scale: 0.5, maxColors: 128 },
+    { fps: 6, scale: 0.5, maxColors: 128 },
     ({ phase, pct }) => {
       const label = phase === 'capture' ? '● REC' : '⚙ ENC';
       btn.textContent = `${label} ${Math.round(pct * 100)}%`;
