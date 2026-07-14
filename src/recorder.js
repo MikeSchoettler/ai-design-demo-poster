@@ -222,17 +222,24 @@ export async function startGifRecording(durationMs = 4000, opts = {}, onProgress
     }
 
     // ==== Encode phase ====
-    const { GIFEncoder, quantize, applyPalette } = await import('gifenc');
+    // gifenc's own applyPalette internally rounds input to RGB565 (5-6-5 bit)
+    // before matching → for grayscale camera footage that collapses to ~32
+    // grey levels and produces heavy posterization. We skip it and run
+    // Floyd–Steinberg dithering ourselves against the true 8-bit input.
+    const { GIFEncoder, quantize, applyPalette, nearestColorIndex } = await import('gifenc');
     const enc = GIFEncoder();
     const delay = Math.round(1000 / fps);
+    const useDither = opts.dither !== false;
     for (let i = 0; i < frames.length; i++) {
       const rgba = frames[i];
       const palette = quantize(rgba, maxColors);
-      const idx = applyPalette(rgba, palette);
+      const idx = useDither
+        ? ditherFloydSteinberg(rgba, targetW, targetH, palette, nearestColorIndex)
+        : applyPalette(rgba, palette);
       enc.writeFrame(idx, targetW, targetH, { palette, delay });
       frames[i] = null; // drop reference so GC can reclaim
       onProgress?.({ phase: 'encode', pct: (i + 1) / frames.length });
-      if (i % 3 === 0) await new Promise((r) => setTimeout(r, 0));
+      if (i % 2 === 0) await new Promise((r) => setTimeout(r, 0));
     }
     enc.finish();
     const bytes = enc.bytes();
@@ -376,4 +383,62 @@ function stamp() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+// Floyd–Steinberg error-diffusion dithering, matching each pixel to the
+// nearest color in `palette` (true 8-bit RGB distance via gifenc's
+// nearestColorIndex helper). Errors distribute right (7/16), bottom-left
+// (3/16), bottom (5/16), bottom-right (1/16). Returns Uint8Array of indices.
+function ditherFloydSteinberg(rgba, w, h, palette, nearestColorIndex) {
+  const src = new Int16Array(rgba.length);
+  for (let i = 0; i < rgba.length; i++) src[i] = rgba[i];
+  const out = new Uint8Array(w * h);
+  const probe = [0, 0, 0];
+  const rowStride = w * 4;
+  for (let y = 0; y < h; y++) {
+    const rowStart = y * rowStride;
+    for (let x = 0; x < w; x++) {
+      const i = rowStart + x * 4;
+      let r = src[i];
+      let g = src[i + 1];
+      let b = src[i + 2];
+      if (r < 0) r = 0; else if (r > 255) r = 255;
+      if (g < 0) g = 0; else if (g > 255) g = 255;
+      if (b < 0) b = 0; else if (b > 255) b = 255;
+      probe[0] = r; probe[1] = g; probe[2] = b;
+      const idx = nearestColorIndex(palette, probe);
+      const pal = palette[idx];
+      out[y * w + x] = idx;
+      const er = r - pal[0];
+      const eg = g - pal[1];
+      const eb = b - pal[2];
+      const hasRight = x + 1 < w;
+      const hasBelow = y + 1 < h;
+      if (hasRight) {
+        const j = i + 4;
+        src[j]     += (er * 7) >> 4;
+        src[j + 1] += (eg * 7) >> 4;
+        src[j + 2] += (eb * 7) >> 4;
+      }
+      if (hasBelow) {
+        const jB = i + rowStride;
+        if (x > 0) {
+          const jBL = jB - 4;
+          src[jBL]     += (er * 3) >> 4;
+          src[jBL + 1] += (eg * 3) >> 4;
+          src[jBL + 2] += (eb * 3) >> 4;
+        }
+        src[jB]     += (er * 5) >> 4;
+        src[jB + 1] += (eg * 5) >> 4;
+        src[jB + 2] += (eb * 5) >> 4;
+        if (hasRight) {
+          const jBR = jB + 4;
+          src[jBR]     += er >> 4;
+          src[jBR + 1] += eg >> 4;
+          src[jBR + 2] += eb >> 4;
+        }
+      }
+    }
+  }
+  return out;
 }
