@@ -170,6 +170,84 @@ export function isRecording() {
   return mediaRecorder?.state === 'recording';
 }
 
+let _gifBusy = false;
+export function isGifBusy() {
+  return _gifBusy;
+}
+
+// Two-phase GIF: (1) capture into offscreen ImageData buffer, (2) encode via
+// dynamic-imported gifenc. Ресайз до 540×675 держит RAM в разумных ~50 MB
+// даже на длинных записях. Оба этапа yield-ят каждые несколько кадров, чтобы
+// canvas продолжал рендериться.
+export async function startGifRecording(durationMs = 4000, opts = {}, onProgress, onDone) {
+  if (!canvas) {
+    console.warn('[recorder] startGifRecording: canvas not ready yet');
+    onDone?.();
+    return;
+  }
+  if (_gifBusy) {
+    console.warn('[recorder] gif already in progress');
+    return;
+  }
+  _gifBusy = true;
+
+  const fps = opts.fps ?? 15;
+  const scale = opts.scale ?? 0.5;
+  const maxColors = opts.maxColors ?? 128;
+  const targetW = Math.round(canvas.width * scale);
+  const targetH = Math.round(canvas.height * scale);
+  const totalFrames = Math.max(1, Math.round((durationMs / 1000) * fps));
+  const frameInterval = 1000 / fps;
+
+  console.log(
+    `[recorder] gif: ${totalFrames}f · ${targetW}×${targetH} · ${fps}fps · ${maxColors}c · ~${durationMs}ms`
+  );
+
+  const off = document.createElement('canvas');
+  off.width = targetW;
+  off.height = targetH;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+
+  try {
+    // ==== Capture phase ====
+    const frames = new Array(totalFrames);
+    const start = performance.now();
+    for (let i = 0; i < totalFrames; i++) {
+      const targetTs = start + i * frameInterval;
+      const wait = targetTs - performance.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      octx.drawImage(canvas, 0, 0, targetW, targetH);
+      frames[i] = octx.getImageData(0, 0, targetW, targetH).data;
+      onProgress?.({ phase: 'capture', pct: (i + 1) / totalFrames });
+    }
+
+    // ==== Encode phase ====
+    const { GIFEncoder, quantize, applyPalette } = await import('gifenc');
+    const enc = GIFEncoder();
+    const delay = Math.round(1000 / fps);
+    for (let i = 0; i < frames.length; i++) {
+      const rgba = frames[i];
+      const palette = quantize(rgba, maxColors);
+      const idx = applyPalette(rgba, palette);
+      enc.writeFrame(idx, targetW, targetH, { palette, delay });
+      frames[i] = null; // drop reference so GC can reclaim
+      onProgress?.({ phase: 'encode', pct: (i + 1) / frames.length });
+      if (i % 3 === 0) await new Promise((r) => setTimeout(r, 0));
+    }
+    enc.finish();
+    const bytes = enc.bytes();
+    const blob = new Blob([bytes], { type: 'image/gif' });
+    console.log(`[recorder] gif done · ${Math.round(blob.size / 1024)} KB`);
+    handleFile(blob, `ai-demo-poster-${stamp()}.gif`, /*needsFreshClick*/ true);
+  } catch (e) {
+    console.error('[recorder] gif failed:', e);
+    alert(`GIF не собрался: ${e.message}`);
+  } finally {
+    _gifBusy = false;
+    onDone?.();
+  }
+}
+
 // Dispatch — desktop → anchor download; touch → try Web Share, else preview
 // modal. The preview modal always works (Telegram WebView etc.) because it
 // lets user long-press the media to save through the system menu.

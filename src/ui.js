@@ -1,4 +1,11 @@
-import { snapPNG, startRecording, isRecording, getRecordingFormat } from './recorder.js';
+import {
+  snapPNG,
+  startRecording,
+  isRecording,
+  getRecordingFormat,
+  startGifRecording,
+  isGifBusy,
+} from './recorder.js';
 import { ensureFaceLandmarker, ensureHandLandmarker, cameraState } from './camera.js';
 
 export const uiState = {
@@ -154,6 +161,10 @@ export function setupUI() {
       <div class="export-row">
         <button class="export-btn secondary" id="rec-6">Rec 6s</button>
         <button class="export-btn secondary" id="rec-10">Rec 10s</button>
+      </div>
+      <div class="export-row">
+        <button class="export-btn secondary" id="rec-gif-4">GIF 4s</button>
+        <button class="export-btn secondary" id="rec-gif-6">GIF 6s</button>
       </div>
       <p class="hint" id="format-hint">Format: —</p>
       <p class="hint">
@@ -323,6 +334,8 @@ export function setupUI() {
   document.getElementById('rec-10').textContent = `Rec 10s ${recLabel}`;
   document.getElementById('rec-6').addEventListener('click', () => tryRecord(6000, 'rec-6', `Rec 6s ${recLabel}`));
   document.getElementById('rec-10').addEventListener('click', () => tryRecord(10000, 'rec-10', `Rec 10s ${recLabel}`));
+  document.getElementById('rec-gif-4').addEventListener('click', () => tryGif(4000, 'rec-gif-4', 'GIF 4s'));
+  document.getElementById('rec-gif-6').addEventListener('click', () => tryGif(6000, 'rec-gif-6', 'GIF 6s'));
 
   window.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
@@ -367,6 +380,7 @@ function setupMobileControls() {
     <div id="mobile-action-btns">
       <button id="m-snap">Фото</button>
       <button id="m-rec">Видео</button>
+      <button id="m-gif">GIF</button>
     </div>
   `;
   document.body.appendChild(bar);
@@ -408,6 +422,25 @@ function setupMobileControls() {
       mrec.textContent = 'Видео';
     }, 8400);
   });
+
+  const mgif = document.getElementById('m-gif');
+  mgif.addEventListener('click', () => {
+    if (isGifBusy()) return;
+    mgif.classList.add('recording');
+    mgif.textContent = '● GIF 0%';
+    startGifRecording(
+      4000,
+      { fps: 15, scale: 0.5, maxColors: 128 },
+      ({ phase, pct }) => {
+        const label = phase === 'capture' ? '● REC' : '⚙ ENC';
+        mgif.textContent = `${label} ${Math.round(pct * 100)}%`;
+      },
+      () => {
+        mgif.classList.remove('recording');
+        mgif.textContent = 'GIF';
+      }
+    );
+  });
 }
 
 function bindText(id, key) {
@@ -428,6 +461,26 @@ function tryRecord(ms, btnId, restoreLabel) {
   };
   startRecording(ms, finish);
   setTimeout(finish, ms + 400);
+}
+
+function tryGif(ms, btnId, restoreLabel) {
+  if (isGifBusy()) return;
+  const btn = document.getElementById(btnId);
+  btn.classList.add('recording');
+  btn.textContent = `● GIF 0%`;
+  const finish = () => {
+    btn.classList.remove('recording');
+    btn.textContent = restoreLabel;
+  };
+  startGifRecording(
+    ms,
+    { fps: 15, scale: 0.5, maxColors: 128 },
+    ({ phase, pct }) => {
+      const label = phase === 'capture' ? '● REC' : '⚙ ENC';
+      btn.textContent = `${label} ${Math.round(pct * 100)}%`;
+    },
+    finish
+  );
 }
 
 export function setStatus(id, text, cls) {
