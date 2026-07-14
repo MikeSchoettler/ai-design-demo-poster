@@ -430,7 +430,7 @@ function setupMobileControls() {
     mgif.textContent = '● GIF 0%';
     startGifRecording(
       3000,
-      { fps: 6, scale: 0.5, maxColors: 128 },
+      { fps: 12, scale: 0.5, maxColors: 256 },
       ({ phase, pct }) => {
         const label = phase === 'capture' ? '● REC' : '⚙ ENC';
         mgif.textContent = `${label} ${Math.round(pct * 100)}%`;
@@ -474,7 +474,7 @@ function tryGif(ms, btnId, restoreLabel) {
   };
   startGifRecording(
     ms,
-    { fps: 6, scale: 0.5, maxColors: 128 },
+    { fps: 12, scale: 0.5, maxColors: 256 },
     ({ phase, pct }) => {
       const label = phase === 'capture' ? '● REC' : '⚙ ENC';
       btn.textContent = `${label} ${Math.round(pct * 100)}%`;
