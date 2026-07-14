@@ -37,6 +37,9 @@ const MODE_HINTS = {
 };
 
 let _hintTimer = null;
+const HINT_DURATION_MS = 2000;
+const _shownHints = new Set();
+
 export function showModeHint(key) {
   const el = document.getElementById('mode-hint');
   if (!el) return;
@@ -45,12 +48,14 @@ export function showModeHint(key) {
     el.classList.remove('visible');
     return;
   }
+  if (_shownHints.has(text)) return;
+  _shownHints.add(text);
   el.textContent = text;
   el.classList.add('visible');
   clearTimeout(_hintTimer);
   _hintTimer = setTimeout(() => {
     el.classList.remove('visible');
-  }, 7000);
+  }, HINT_DURATION_MS);
 }
 
 const MODE_LABELS = Object.fromEntries(MODES.map((m) => [m.key, m.label]));
@@ -207,10 +212,12 @@ export function setupUI() {
   function showTemporaryHint(text) {
     const el = document.getElementById('mode-hint');
     if (!el) return;
+    if (_shownHints.has(text)) return;
+    _shownHints.add(text);
     el.textContent = text;
     el.classList.add('visible');
     clearTimeout(_hintTimer);
-    _hintTimer = setTimeout(() => el.classList.remove('visible'), 3000);
+    _hintTimer = setTimeout(() => el.classList.remove('visible'), HINT_DURATION_MS);
   }
 
   const camToggle = document.getElementById('camera-toggle');
