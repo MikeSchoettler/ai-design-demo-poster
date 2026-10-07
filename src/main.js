@@ -96,12 +96,37 @@ function updateHud() {
 
 // Serialize permission prompts — Yandex Browser (and other Chromium forks) show
 // only one dialog at a time; a parallel second request can silently drop.
+// A wedged browser media pipeline (seen in Yandex Browser 26.8 after a long
+// uptime) leaves getUserMedia pending forever — no prompt, no rejection.
+// Guard every request with a timeout so the overlay never traps the user.
+const PERMISSION_TIMEOUT_MS = 12000;
+const HINT_DELAY_MS = 5000;
+
+function withTimeout(promise, ms, what) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      resolve({
+        ok: false,
+        timedOut: true,
+        reason: `${what}: браузер не ответил за ${Math.round(ms / 1000)} с — перезапусти браузер или продолжи без него`,
+      });
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function startFullFlow() {
   startFull.disabled = true;
-  startFlow.disabled = true;
+  // Keep the skip button alive: it is the only exit if the browser never answers.
+  startFlow.disabled = false;
+
+  const hintTimer = setTimeout(() => {
+    if (hintEl) hintEl.hidden = false;
+  }, HINT_DELAY_MS);
 
   setStartStatus('1 / 2 · запрашиваю микрофон…');
-  const mic = await initAudio();
+  const mic = await withTimeout(initAudio(), PERMISSION_TIMEOUT_MS, 'Микрофон');
   if (mic.ok) {
     setStatus('audio-status', 'Ready · 1024-bin FFT / 8-band split', 'ok');
   } else {
@@ -109,7 +134,9 @@ async function startFullFlow() {
   }
 
   setStartStatus('2 / 2 · запрашиваю камеру…');
-  const cam = await initCamera();
+  const cam = await withTimeout(initCamera(), PERMISSION_TIMEOUT_MS, 'Камера');
+  clearTimeout(hintTimer);
+  if (hintEl && !(mic.timedOut || cam.timedOut)) hintEl.hidden = true;
   if (cam.ok) {
     setStatus(
       'camera-status',
@@ -126,7 +153,6 @@ async function startFullFlow() {
     setStartStatus(cam.reason || mic.reason || 'Разрешения не получены', 'err');
     if (hintEl) hintEl.hidden = false;
     startFull.disabled = false;
-    startFlow.disabled = false;
     return;
   }
   if (!cam.ok) {
@@ -145,8 +171,10 @@ async function startFullFlow() {
 }
 
 function startFlowOnly() {
-  setStatus('camera-status', 'Пропущено пользователем', 'err');
-  setStatus('audio-status', 'Пропущено пользователем', 'err');
+  if (audioState.status !== 'ready') setStatus('audio-status', 'Пропущено пользователем', 'err');
+  if (cameraState.status !== 'ready' && cameraState.status !== 'camera-ready') {
+    setStatus('camera-status', 'Пропущено пользователем', 'err');
+  }
   updateHud();
   closeOverlay();
 }
